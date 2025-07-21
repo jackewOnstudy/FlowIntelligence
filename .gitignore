@@ -1,0 +1,7 @@
+*.mp4
+*.txt
+/build
+/Output
+/TEST_OUTPUT
+/first_frame
+
