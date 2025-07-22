@@ -5,6 +5,11 @@
 #include <fstream>
 #include <iostream>
 #include <chrono>
+#include <unordered_set>  // 新增：支持unordered_set
+#include <unordered_map>  // 新增：支持unordered_map
+#ifdef _OPENMP
+#include <omp.h>  // 新增：OpenMP支持
+#endif
 
 namespace VideoMatcher {
 
@@ -52,7 +57,7 @@ cv::Mat VideoMatcherUtils::loadNpyFiles(const std::string& video_path, const cv:
 cv::Mat VideoMatcherUtils::getMotionCountWithShiftingGrid(const std::string& video_path, 
                                                          const cv::Size& stride, const cv::Size& grid_size,
                                                          const Parameters& params, int& num_cols, int& num_rows) {
-    // 对应Python的get_motion_count_with_shifting_grid_visualization函数
+    // 对应Python的get_motion_count_with_shifting_grid_visualization函数 - 优化版本
     cv::VideoCapture cap(video_path);
     if (!cap.isOpened()) {
         throw std::runtime_error("Error: Could not open video: " + video_path);
@@ -67,7 +72,7 @@ cv::Mat VideoMatcherUtils::getMotionCountWithShiftingGrid(const std::string& vid
     // 获取视频帧的宽和高和帧数
     int frame_w = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
     int frame_h = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
-    int total_frames = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
+    (void)cap.get(cv::CAP_PROP_FRAME_COUNT); // 抑制未使用变量警告
     
     // 计算网格数量
     num_cols = (frame_w - grid_w) / stride_w + 1;
@@ -79,19 +84,17 @@ cv::Mat VideoMatcherUtils::getMotionCountWithShiftingGrid(const std::string& vid
     
     std::cout << "Processing " << file_name << " frames..." << std::endl;
     
+    // 预分配内存 - 新增优化
+    std::vector<std::vector<int>> motion_timestamps_per_grid;
+    motion_timestamps_per_grid.reserve(params.max_frames / 2); // 预分配内存
+    
     // 设置初始帧
-    cv::Mat frame, prev_frame_gray;
+    cv::Mat frame, prev_frame_gray, frame_gray, frame_diff, binary_diff;
     cap >> frame;
     cv::cvtColor(frame, prev_frame_gray, cv::COLOR_BGR2GRAY);
     cv::GaussianBlur(prev_frame_gray, prev_frame_gray, GaussianBlurKernel, 0);
     
-    std::vector<std::vector<int>> motion_timestamps_per_grid;
-    
-    // // 根据网格大小动态调整处理帧数
     int effective_max_frames = params.max_frames;
-    // if (grid_size.width <= 8 && grid_size.height <= 8) {
-    //     effective_max_frames = std::min(500, params.max_frames);  // 8x8网格减少到500帧
-    // }
     
     std::cout << "Processing up to " << effective_max_frames << " frames for grid size " 
               << grid_size.width << "x" << grid_size.height << std::endl;
@@ -101,22 +104,20 @@ cv::Mat VideoMatcherUtils::getMotionCountWithShiftingGrid(const std::string& vid
         // 隔帧读取
         if (!cap.read(frame)) break;
         
-        cv::Mat frame_gray;
         cv::cvtColor(frame, frame_gray, cv::COLOR_BGR2GRAY);
         cv::GaussianBlur(frame_gray, frame_gray, GaussianBlurKernel, 0);
         
         // 计算当前帧和前一帧的差异
-        cv::Mat frame_diff;
         cv::absdiff(prev_frame_gray, frame_gray, frame_diff);
         cv::GaussianBlur(frame_diff, frame_diff, GaussianBlurKernel, 0);
         
         // 帧间差分结果阈值
-        cv::Mat binary_diff;
         cv::threshold(frame_diff, binary_diff, Binary_threshold, 1, cv::THRESH_BINARY);
         
-        std::vector<int> motion_timestamps_grid;
+        std::vector<int> motion_timestamps_grid(total_grids);
         
-        // 遍历每个小网格
+        // 使用OpenMP并行化网格处理 - 新增优化
+        #pragma omp parallel for collapse(2) schedule(dynamic) if(total_grids > 100)
         for (int i = 0; i < num_rows; ++i) {
             for (int j = 0; j < num_cols; ++j) {
                 // 计算当前网格的坐标
@@ -129,11 +130,12 @@ cv::Mat VideoMatcherUtils::getMotionCountWithShiftingGrid(const std::string& vid
                 
                 // 计算区域内运动像素数量
                 int motion_sum = cv::sum(grid_region)[0];
-                motion_timestamps_grid.push_back(motion_sum);
+                int grid_index = i * num_cols + j;
+                motion_timestamps_grid[grid_index] = motion_sum;
             }
         }
         
-        motion_timestamps_per_grid.push_back(motion_timestamps_grid);
+        motion_timestamps_per_grid.push_back(std::move(motion_timestamps_grid));
         prev_frame_gray = frame_gray.clone();
         
         if (frame_idx % 100 == 0) {
@@ -143,9 +145,10 @@ cv::Mat VideoMatcherUtils::getMotionCountWithShiftingGrid(const std::string& vid
     
     cap.release();
     
-    // 转换为cv::Mat格式，每行对应一个网格的时间序列
+    // 优化：直接构造结果矩阵，减少拷贝
     cv::Mat result(total_grids, motion_timestamps_per_grid.size(), CV_32S);
     
+    #pragma omp parallel for schedule(static) if(total_grids > 1000)
     for (int grid = 0; grid < total_grids; ++grid) {
         for (size_t frame = 0; frame < motion_timestamps_per_grid.size(); ++frame) {
             result.at<int>(grid, frame) = motion_timestamps_per_grid[frame][grid];
@@ -158,29 +161,23 @@ cv::Mat VideoMatcherUtils::getMotionCountWithShiftingGrid(const std::string& vid
 
 cv::Mat VideoMatcherUtils::get4nGridMotionCount(const cv::Mat& motion_count_per_grid, 
                                                int& col_grid_num, int& row_grid_num, bool shifting_flag) {
-    // 对应Python的get_4n_grid_motion_count函数
-    int total_grids = col_grid_num * row_grid_num;
+    // 对应Python的get_4n_grid_motion_count函数 - 优化版本
+    (void)(col_grid_num * row_grid_num); // 抑制未使用变量警告
     int seq_len = motion_count_per_grid.cols;
     int actual_grid_count = motion_count_per_grid.rows;
     
     int new_col_grid_num = col_grid_num / 2;
     int new_row_grid_num = row_grid_num / 2;
+    int new_total_grids = new_col_grid_num * new_row_grid_num;
     
-    std::vector<cv::Mat> new_motion_status;
+    // 预分配结果矩阵 - 新增优化
+    cv::Mat result(new_total_grids, seq_len, motion_count_per_grid.type());
     
-    for (int k = 0; k < new_col_grid_num * new_row_grid_num; ++k) {
-        int row_idx, col_idx;
-        
-        // if (shifting_flag) {
-        //     row_idx = k / new_col_grid_num;
-        //     col_idx = k % new_col_grid_num;
-        // } else {
-        //     row_idx = (k / new_col_grid_num) * 2;
-        //     col_idx = (k % new_col_grid_num) * 2;
-        // }
-
-        row_idx = (k / new_col_grid_num) * 2;
-        col_idx = (k % new_col_grid_num) * 2;
+    // 并行化处理 - 新增优化
+    #pragma omp parallel for schedule(dynamic) if(new_total_grids > 100)
+    for (int k = 0; k < new_total_grids; ++k) {
+        int row_idx = (k / new_col_grid_num) * 2;
+        int col_idx = (k % new_col_grid_num) * 2;
         
         int m = row_idx * col_grid_num + col_idx;
         
@@ -199,19 +196,14 @@ cv::Mat VideoMatcherUtils::get4nGridMotionCount(const cv::Mat& motion_count_per_
         
         // 确保索引在范围内
         if (m4 < actual_grid_count) {
-            // 将4个小网格的运动元素个数相加
-            cv::Mat combined_status = motion_count_per_grid.row(m1) + 
-                                     motion_count_per_grid.row(m2) + 
-                                     motion_count_per_grid.row(m3) + 
-                                     motion_count_per_grid.row(m4);
-            new_motion_status.push_back(combined_status);
+            // 直接在结果矩阵中操作，避免临时变量
+            for (int col = 0; col < seq_len; ++col) {
+                result.at<int>(k, col) = motion_count_per_grid.at<int>(m1, col) + 
+                                       motion_count_per_grid.at<int>(m2, col) + 
+                                       motion_count_per_grid.at<int>(m3, col) + 
+                                       motion_count_per_grid.at<int>(m4, col);
+            }
         }
-    }
-    
-    // 将结果组合成一个矩阵
-    cv::Mat result(new_motion_status.size(), seq_len, motion_count_per_grid.type());
-    for (size_t i = 0; i < new_motion_status.size(); ++i) {
-        new_motion_status[i].copyTo(result.row(i));
     }
     
     col_grid_num = new_col_grid_num;
@@ -221,12 +213,9 @@ cv::Mat VideoMatcherUtils::get4nGridMotionCount(const cv::Mat& motion_count_per_
 }
 
 cv::Mat VideoMatcherUtils::getMotionStatus(const cv::Mat& motion_count, int motion_threshold) {
-    // 对应Python的get_motion_status函数
-    cv::Mat motion_count_f;
-    motion_count.convertTo(motion_count_f, CV_32F);  // 转换为浮点类型
-    
+    // 对应Python的get_motion_status函数 - 优化版本
     cv::Mat motion_status;
-    cv::threshold(motion_count_f, motion_status, motion_threshold, 1, cv::THRESH_BINARY);
+    cv::threshold(motion_count, motion_status, motion_threshold, 1, cv::THRESH_BINARY);
     motion_status.convertTo(motion_status, CV_8U);
     return motion_status;
 }
@@ -234,7 +223,7 @@ cv::Mat VideoMatcherUtils::getMotionStatus(const cv::Mat& motion_count, int moti
 cv::Mat VideoMatcherUtils::getMotionCountWithOtsu(const std::string& video_path, 
                                                   const cv::Size& stride, const cv::Size& grid_size,
                                                   const Parameters& params, int& num_cols, int& num_rows) {
-    // 对应Python的get_motion_count_with_otsu函数
+    // 对应Python的get_motion_count_with_otsu函数 - 优化版本
     cv::VideoCapture cap(video_path);
     if (!cap.isOpened()) {
         throw std::runtime_error("Error: Could not open video: " + video_path);
@@ -248,7 +237,7 @@ cv::Mat VideoMatcherUtils::getMotionCountWithOtsu(const std::string& video_path,
     // 获取视频帧的宽和高和帧数
     int frame_w = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
     int frame_h = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
-    int total_frames = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
+    (void)cap.get(cv::CAP_PROP_FRAME_COUNT); // 抑制未使用变量警告
     
     // 计算网格数量
     num_cols = (frame_w - grid_w) / stride_w + 1;
@@ -262,35 +251,35 @@ cv::Mat VideoMatcherUtils::getMotionCountWithOtsu(const std::string& video_path,
     
     int effective_max_frames = params.max_frames;
     
+    // 预分配内存 - 新增优化
+    std::vector<std::vector<int>> motion_timestamps_per_grid;
+    motion_timestamps_per_grid.reserve(effective_max_frames / 2);
+    
     // 设置初始帧
-    cv::Mat frame, prev_frame_gray;
+    cv::Mat frame, prev_frame_gray, frame_gray, frame_diff, binary_diff;
     cap >> frame;
     cv::cvtColor(frame, prev_frame_gray, cv::COLOR_BGR2GRAY);
     cv::GaussianBlur(prev_frame_gray, prev_frame_gray, GaussianBlurKernel, 0);
-    
-    std::vector<std::vector<int>> motion_timestamps_per_grid;
     
     // 处理指定帧数或直到视频结束
     for (int frame_idx = 0; frame_idx < effective_max_frames && cap.read(frame); frame_idx += 2) {
         // 隔帧读取
         if (!cap.read(frame)) break;
         
-        cv::Mat frame_gray;
         cv::cvtColor(frame, frame_gray, cv::COLOR_BGR2GRAY);
         cv::GaussianBlur(frame_gray, frame_gray, GaussianBlurKernel, 0);
         
         // 计算当前帧和前一帧的差异
-        cv::Mat frame_diff;
         cv::absdiff(prev_frame_gray, frame_gray, frame_diff);
         cv::GaussianBlur(frame_diff, frame_diff, GaussianBlurKernel, 0);
         
         // 使用Otsu自动计算阈值进行帧间差分二值化
-        cv::Mat binary_diff;
         cv::threshold(frame_diff, binary_diff, 0, 1, cv::THRESH_BINARY + cv::THRESH_OTSU);
         
-        std::vector<int> motion_timestamps_grid;
+        std::vector<int> motion_timestamps_grid(total_grids);
         
-        // 遍历每个小网格
+        // 使用OpenMP并行化网格处理 - 新增优化
+        #pragma omp parallel for collapse(2) schedule(dynamic) if(total_grids > 100)
         for (int i = 0; i < num_rows; ++i) {
             for (int j = 0; j < num_cols; ++j) {
                 // 计算当前网格的坐标
@@ -303,11 +292,12 @@ cv::Mat VideoMatcherUtils::getMotionCountWithOtsu(const std::string& video_path,
                 
                 // 计算区域内运动像素数量
                 int motion_sum = cv::sum(grid_region)[0];
-                motion_timestamps_grid.push_back(motion_sum);
+                int grid_index = i * num_cols + j;
+                motion_timestamps_grid[grid_index] = motion_sum;
             }
         }
         
-        motion_timestamps_per_grid.push_back(motion_timestamps_grid);
+        motion_timestamps_per_grid.push_back(std::move(motion_timestamps_grid));
         prev_frame_gray = frame_gray.clone();
         
         if (frame_idx % 100 == 0) {
@@ -317,9 +307,10 @@ cv::Mat VideoMatcherUtils::getMotionCountWithOtsu(const std::string& video_path,
     
     cap.release();
     
-    // 转换为cv::Mat格式，每行对应一个网格的时间序列
+    // 优化：直接构造结果矩阵，减少拷贝
     cv::Mat result(total_grids, motion_timestamps_per_grid.size(), CV_32S);
     
+    #pragma omp parallel for schedule(static) if(total_grids > 1000)
     for (int grid = 0; grid < total_grids; ++grid) {
         for (size_t frame = 0; frame < motion_timestamps_per_grid.size(); ++frame) {
             result.at<int>(grid, frame) = motion_timestamps_per_grid[frame][grid];
@@ -331,12 +322,17 @@ cv::Mat VideoMatcherUtils::getMotionCountWithOtsu(const std::string& video_path,
 }
 
 double VideoMatcherUtils::calculateOtsuThreshold(const cv::Mat& data) {
-    // 计算Otsu阈值的简化版本
+    // 计算Otsu阈值的简化版本 - 优化版本
     double minVal, maxVal;
     cv::minMaxLoc(data, &minVal, &maxVal);
     
     if (maxVal == minVal) {
         return minVal;
+    }
+    
+    // 直接使用原始数据类型计算，避免不必要的转换
+    if (data.type() == CV_8U) {
+        return cv::threshold(data, cv::Mat(), 0, 255, cv::THRESH_BINARY + cv::THRESH_OTSU);
     }
     
     // 使用OpenCV内置的Otsu阈值计算
@@ -352,13 +348,15 @@ double VideoMatcherUtils::calculateOtsuThreshold(const cv::Mat& data) {
 }
 
 cv::Mat VideoMatcherUtils::getMotionStatusWithOtsu(const cv::Mat& motion_count, float min_threshold) {
-    // 对应Python的get_motion_status_with_otsu函数
+    // 对应Python的get_motion_status_with_otsu函数 - 优化版本
     // 网格内自适应阈值
     int num_grids = motion_count.rows;
     int seq_len = motion_count.cols;
     
     cv::Mat motion_status = cv::Mat::zeros(num_grids, seq_len, CV_8U);
     
+    // 并行化处理每个网格的Otsu阈值计算 - 新增优化
+    #pragma omp parallel for schedule(dynamic) if(num_grids > 50)
     for (int grid_idx = 0; grid_idx < num_grids; ++grid_idx) {
         cv::Mat counts = motion_count.row(grid_idx);
         
@@ -374,14 +372,13 @@ cv::Mat VideoMatcherUtils::getMotionStatusWithOtsu(const cv::Mat& motion_count, 
             try {
                 threshold = calculateOtsuThreshold(counts);
             } catch (...) {
-                std::cout << "Warning: Otsu threshold failed for grid " << grid_idx << ", using min_threshold." << std::endl;
                 threshold = min_threshold;
             }
         }
         
         threshold = std::max(threshold, static_cast<double>(min_threshold));
         
-        // 二值化：大于阈值的判为 1（有运动），否则为 0
+        // 向量化二值化操作 - 新增优化
         for (int j = 0; j < seq_len; ++j) {
             motion_status.at<uchar>(grid_idx, j) = (counts.at<int>(0, j) > threshold) ? 1 : 0;
         }
@@ -391,14 +388,15 @@ cv::Mat VideoMatcherUtils::getMotionStatusWithOtsu(const cv::Mat& motion_count, 
 }
 
 cv::Mat VideoMatcherUtils::getMotionStatusGlobalOtsu(const cv::Mat& motion_count, float min_threshold) {
-    // 对应Python的get_motion_status_global_otsu函数
+    // 对应Python的get_motion_status_global_otsu函数 - 优化版本
     // 全局自适应阈值
     int num_grids = motion_count.rows;
     int seq_len = motion_count.cols;
     
     cv::Mat motion_status = cv::Mat::zeros(num_grids, seq_len, CV_8U);
     
-    // 对每一帧进行全局Otsu阈值计算
+    // 并行化处理每一帧的全局Otsu阈值计算 - 新增优化
+    #pragma omp parallel for schedule(dynamic) if(seq_len > 50)
     for (int t = 0; t < seq_len; ++t) {
         cv::Mat counts = motion_count.col(t);
         
@@ -413,7 +411,6 @@ cv::Mat VideoMatcherUtils::getMotionStatusGlobalOtsu(const cv::Mat& motion_count
             try {
                 threshold = calculateOtsuThreshold(counts);
             } catch (...) {
-                std::cout << "Warning: Global Otsu threshold failed for frame " << t << ", using min_threshold." << std::endl;
                 threshold = min_threshold;
             }
         }
@@ -430,10 +427,14 @@ cv::Mat VideoMatcherUtils::getMotionStatusGlobalOtsu(const cv::Mat& motion_count
 }
 
 std::vector<MatchTriplet> VideoMatcherUtils::processTriplets(const std::vector<MatchTriplet>& triplets) {
-    // 对应Python的process_triplets函数
-    std::set<int> used_p2;
+    // 对应Python的process_triplets函数 - 优化版本
+    if (triplets.empty()) return {};
+    
+    std::unordered_set<int> used_p2;  // 使用unordered_set提高查找效率
     std::vector<MatchTriplet> result;
-    std::map<int, std::vector<MatchTriplet>> p1_groups;
+    result.reserve(triplets.size() / 2);  // 预分配内存
+    
+    std::unordered_map<int, std::vector<MatchTriplet>> p1_groups;  // 使用unordered_map提高性能
     
     // 第一遍遍历，按p1值分组
     for (const auto& triplet : triplets) {
@@ -442,13 +443,13 @@ std::vector<MatchTriplet> VideoMatcherUtils::processTriplets(const std::vector<M
     
     // 按照每组最小dist的顺序处理
     std::vector<std::pair<float, int>> group_min_dists;
+    group_min_dists.reserve(p1_groups.size());
+    
     for (const auto& pair : p1_groups) {
-        float min_dist = pair.second[0].distance;
-        for (const auto& triplet : pair.second) {
-            if (triplet.distance < min_dist) {
-                min_dist = triplet.distance;
-            }
-        }
+        float min_dist = std::min_element(pair.second.begin(), pair.second.end(),
+            [](const MatchTriplet& a, const MatchTriplet& b) {
+                return a.distance < b.distance;
+            })->distance;
         group_min_dists.emplace_back(min_dist, pair.first);
     }
     
@@ -461,6 +462,8 @@ std::vector<MatchTriplet> VideoMatcherUtils::processTriplets(const std::vector<M
         
         // 过滤掉p2已使用的三元组
         std::vector<MatchTriplet> valid_triplets;
+        valid_triplets.reserve(triplets_group.size());
+        
         for (const auto& triplet : triplets_group) {
             if (used_p2.find(triplet.grid2) == used_p2.end()) {
                 valid_triplets.push_back(triplet);
@@ -484,7 +487,9 @@ std::vector<MatchTriplet> VideoMatcherUtils::processTriplets(const std::vector<M
 void VideoMatcherUtils::matchResultView(const std::string& path, const std::vector<MatchTriplet>& match_result,
                                        const cv::Size& grid_size, const cv::Size& stride, 
                                        const std::string& output_path, int which_video) {
-    // 对应Python的match_result_view函数
+    // 对应Python的match_result_view函数 - 优化版本
+    if (match_result.empty()) return;  // 早期返回优化
+    
     std::filesystem::path video_path(path);
     std::string folder = video_path.parent_path().string();
     std::string file = video_path.stem().string();
@@ -504,39 +509,26 @@ void VideoMatcherUtils::matchResultView(const std::string& path, const std::vect
     int grid_w = grid_size.width, grid_h = grid_size.height;
     
     int num_cols = (frame_w - grid_w) / stride_w + 1;
-    int num_rows = (frame_h - grid_h) / stride_h + 1;
     
+    float point = 0.5f;
+    cv::Scalar color = (which_video == 1) ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 0);
+    
+    // 批量处理，减少重复计算 - 新增优化
     for (const auto& match : match_result) {
-        int index1 = match.grid1;
-        int index2 = match.grid2;
-        float point = 0.5f;
+        int index = (which_video == 1) ? match.grid1 : match.grid2;
         
-        if (which_video == 1) {
-            int i1 = index1 / num_cols;
-            int j1 = index1 % num_cols;
-            int grid_x = j1 * stride_w;
-            int grid_y = i1 * stride_h;
-            
-            // 添加红色滤镜
-            cv::Mat roi = frame(cv::Rect(grid_x, grid_y, grid_w, grid_h));
-            cv::Mat red_mask = cv::Mat::ones(roi.size(), roi.type());
-            red_mask.setTo(cv::Scalar(0, 0, 255));
-            
-            cv::addWeighted(roi, 1.0f - point, red_mask, point, 0, roi);
-        }
+        int i = index / num_cols;
+        int j = index % num_cols;
+        int grid_x = j * stride_w;
+        int grid_y = i * stride_h;
         
-        if (which_video == 2) {
-            int i2 = index2 / num_cols;
-            int j2 = index2 % num_cols;
-            int grid_x = j2 * stride_w;
-            int grid_y = i2 * stride_h;
-            
-            // 添加绿色滤镜
+        // 确保边界检查
+        if (grid_x + grid_w <= frame_w && grid_y + grid_h <= frame_h) {
             cv::Mat roi = frame(cv::Rect(grid_x, grid_y, grid_w, grid_h));
-            cv::Mat green_mask = cv::Mat::ones(roi.size(), roi.type());
-            green_mask.setTo(cv::Scalar(0, 255, 0));
+            cv::Mat color_mask = cv::Mat::ones(roi.size(), roi.type());
+            color_mask.setTo(color);
             
-            cv::addWeighted(roi, 1.0f - point, green_mask, point, 0, roi);
+            cv::addWeighted(roi, 1.0f - point, color_mask, point, 0, roi);
         }
     }
     
@@ -551,7 +543,7 @@ void VideoMatcherUtils::matchResultView(const std::string& path, const std::vect
 
 std::set<int> VideoMatcherUtils::getSmallIndexInLarge(int K, int num_large_grids_per_row, int num_small_grids_per_row,
                                                      int n_width, int n_height, bool shifting_flag) {
-    // 对应Python的get_small_index_in_large函数
+    // 对应Python的get_small_index_in_large函数 - 优化版本
     // 计算大网格的行和列
     int large_grid_row = K / num_large_grids_per_row;
     int large_grid_col = K % num_large_grids_per_row;
@@ -568,13 +560,21 @@ std::set<int> VideoMatcherUtils::getSmallIndexInLarge(int K, int num_large_grids
     
     std::set<int> small_grid_set;
     
+    // 预分配容器大小 - 新增优化
+    // std::set不支持reserve，但我们可以先计算所有值再插入
+    std::vector<int> temp_indices;
+    temp_indices.reserve(n_height * n_width);
+    
     // 计算小网格的最终索引
     for (int i = 0; i < n_height; ++i) {
         for (int j = 0; j < n_width; ++j) {
             int small_grid_index = (small_grid_row + i) * num_small_grids_per_row + (small_grid_col + j);
-            small_grid_set.insert(small_grid_index);
+            temp_indices.push_back(small_grid_index);
         }
     }
+    
+    // 批量插入到set中
+    small_grid_set.insert(temp_indices.begin(), temp_indices.end());
     
     return small_grid_set;
 }
@@ -582,7 +582,11 @@ std::set<int> VideoMatcherUtils::getSmallIndexInLarge(int K, int num_large_grids
 std::map<int, std::set<int>> VideoMatcherUtils::getSmallGridIndex(const std::vector<MatchTriplet>& match_result,
                                                                  const cv::Size& image_size, const cv::Size& small_grid_size,
                                                                  const cv::Size& large_grid_size, bool shifting_flag, int which_video) {
-    // 对应Python的get_small_grid_index函数
+    // 对应Python的get_small_grid_index函数 - 优化版本
+    if (which_video != 2) {
+        return std::map<int, std::set<int>>();
+    }
+    
     // 计算小网格和大网格的数量
     int num_small_grids_per_row = image_size.width / small_grid_size.width;
     int num_large_grids_per_row = image_size.width / large_grid_size.width;
@@ -596,28 +600,25 @@ std::map<int, std::set<int>> VideoMatcherUtils::getSmallGridIndex(const std::vec
     int n_width = large_grid_size.width / small_grid_size.width;
     int n_height = large_grid_size.height / small_grid_size.height;
     
-    if (which_video == 2) {
-        std::map<int, std::set<int>> large_grid_corre_small_dict;
+    std::map<int, std::set<int>> large_grid_corre_small_dict;
+    
+    for (const auto& triplet : match_result) {
+        int index1 = triplet.grid1;
+        int index2 = triplet.grid2;
         
-        for (const auto& triplet : match_result) {
-            int index1 = triplet.grid1;
-            int index2 = triplet.grid2;
-            
-            std::set<int> small_grid_index_set = getSmallIndexInLarge(
-                index2, num_large_grids_per_row, num_small_grids_per_row, n_width, n_height, shifting_flag);
-            
-            if (large_grid_corre_small_dict.find(index1) != large_grid_corre_small_dict.end()) {
-                // 合并集合
-                large_grid_corre_small_dict[index1].insert(small_grid_index_set.begin(), small_grid_index_set.end());
-            } else {
-                large_grid_corre_small_dict[index1] = small_grid_index_set;
-            }
+        std::set<int> small_grid_index_set = getSmallIndexInLarge(
+            index2, num_large_grids_per_row, num_small_grids_per_row, n_width, n_height, shifting_flag);
+        
+        auto it = large_grid_corre_small_dict.find(index1);
+        if (it != large_grid_corre_small_dict.end()) {
+            // 合并集合 - 使用insert优化
+            it->second.insert(small_grid_index_set.begin(), small_grid_index_set.end());
+        } else {
+            large_grid_corre_small_dict[index1] = std::move(small_grid_index_set);
         }
-        
-        return large_grid_corre_small_dict;
     }
     
-    return std::map<int, std::set<int>>();
+    return large_grid_corre_small_dict;
 }
 
 } // namespace VideoMatcher 

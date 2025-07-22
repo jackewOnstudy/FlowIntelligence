@@ -6,8 +6,23 @@
 
 namespace VideoMatcher {
 
-VideoMatcherEngine::VideoMatcherEngine(const Parameters& params) : parameters_(params) {
-    // 构造函数，对应Python的参数初始化
+VideoMatcherEngine::VideoMatcherEngine(const Parameters& params) 
+    : parameters_(params), cache_(std::make_unique<MemoryCache>()) {
+    // 构造函数，对应Python的参数初始化 - 新增内存优化
+    
+    // 预分配缓冲区以减少运行时内存分配
+    preallocateBuffers(1000);  // 预分配合理大小的缓冲区
+}
+
+void VideoMatcherEngine::preallocateBuffers(size_t expected_size) {
+    // 预分配内存缓冲区 - 新增优化
+    motion_matrix_buffer_.reserve(ITERATE_TIMES * 2);  // 为每个迭代级别预分配
+    result_buffer_.reserve(ITERATE_TIMES);
+    
+    for (int i = 0; i < ITERATE_TIMES; ++i) {
+        result_buffer_.emplace_back();
+        result_buffer_[i].reserve(expected_size);
+    }
 }
 
 std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
