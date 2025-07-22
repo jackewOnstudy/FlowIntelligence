@@ -32,18 +32,47 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
     std::cout << "计算基础网格运动状态序列..." << std::endl;
     
     // 计算网格状态序列(值为运动像素个数)
-    cv::Mat motion_count_per_grid1 = VideoMatcherUtils::getMotionCountWithShiftingGrid(
-        video_path1, i_stride1, grid_size, parameters_, num_cols1, num_rows1);
-    cv::Mat motion_count_per_grid2 = VideoMatcherUtils::getMotionCountWithShiftingGrid(
-        video_path2, i_stride2, grid_size2, parameters_, num_cols2, num_rows2);
+    cv::Mat motion_count_per_grid1, motion_count_per_grid2;
+    
+    if (parameters_.use_otsu_t1) {
+        // 使用Otsu自适应T1参数
+        std::cout << "使用Otsu自适应T1阈值进行运动检测..." << std::endl;
+        motion_count_per_grid1 = VideoMatcherUtils::getMotionCountWithOtsu(
+            video_path1, i_stride1, grid_size, parameters_, num_cols1, num_rows1);
+        motion_count_per_grid2 = VideoMatcherUtils::getMotionCountWithOtsu(
+            video_path2, i_stride2, grid_size2, parameters_, num_cols2, num_rows2);
+    } else {
+        // 使用固定T1阈值
+        motion_count_per_grid1 = VideoMatcherUtils::getMotionCountWithShiftingGrid(
+            video_path1, i_stride1, grid_size, parameters_, num_cols1, num_rows1);
+        motion_count_per_grid2 = VideoMatcherUtils::getMotionCountWithShiftingGrid(
+            video_path2, i_stride2, grid_size2, parameters_, num_cols2, num_rows2);
+    }
     
     // 保存motion_count_per_grid
     VideoMatcherUtils::saveNpyFiles(video_path1, motion_count_per_grid1, grid_size, parameters_.motion_counts_path);
     VideoMatcherUtils::saveNpyFiles(video_path2, motion_count_per_grid2, grid_size2, parameters_.motion_counts_path);
     
     // 计算网格状态序列
-    cv::Mat motion_status_per_grid1 = VideoMatcherUtils::getMotionStatus(motion_count_per_grid1, parameters_.motion_threshold1[0]);
-    cv::Mat motion_status_per_grid2 = VideoMatcherUtils::getMotionStatus(motion_count_per_grid2, parameters_.motion_threshold2[0]);
+    cv::Mat motion_status_per_grid1, motion_status_per_grid2;
+    
+    if (parameters_.use_otsu_t2) {
+        // 使用Otsu自适应T2参数
+        std::cout << "使用Otsu自适应T2阈值进行运动状态判断..." << std::endl;
+        if (parameters_.is_global_otsu) {
+            std::cout << "采用全局Otsu阈值模式..." << std::endl;
+            motion_status_per_grid1 = VideoMatcherUtils::getMotionStatusGlobalOtsu(motion_count_per_grid1, parameters_.otsu_min_threshold);
+            motion_status_per_grid2 = VideoMatcherUtils::getMotionStatusGlobalOtsu(motion_count_per_grid2, parameters_.otsu_min_threshold);
+        } else {
+            std::cout << "采用网格内Otsu阈值模式..." << std::endl;
+            motion_status_per_grid1 = VideoMatcherUtils::getMotionStatusWithOtsu(motion_count_per_grid1, parameters_.otsu_min_threshold);
+            motion_status_per_grid2 = VideoMatcherUtils::getMotionStatusWithOtsu(motion_count_per_grid2, parameters_.otsu_min_threshold);
+        }
+    } else {
+        // 使用固定T2阈值
+        motion_status_per_grid1 = VideoMatcherUtils::getMotionStatus(motion_count_per_grid1, parameters_.motion_threshold1[0]);
+        motion_status_per_grid2 = VideoMatcherUtils::getMotionStatus(motion_count_per_grid2, parameters_.motion_threshold2[0]);
+    }
     
     VideoMatcherUtils::saveNpyFiles(video_path1, motion_status_per_grid1, grid_size, parameters_.motion_status_path);
     VideoMatcherUtils::saveNpyFiles(video_path2, motion_status_per_grid2, grid_size2, parameters_.motion_status_path);
@@ -70,10 +99,22 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
         motion_count_per_grid2 = VideoMatcherUtils::get4nGridMotionCount(
             motion_count_per_grid2, num_cols2, num_rows2, shifting_flag);
         
-        motion_status_per_grid1 = VideoMatcherUtils::getMotionStatus(
-            motion_count_per_grid1, parameters_.motion_threshold1[i]);
-        motion_status_per_grid2 = VideoMatcherUtils::getMotionStatus(
-            motion_count_per_grid2, parameters_.motion_threshold2[i]);
+        if (parameters_.use_otsu_t2) {
+            // 使用Otsu自适应T2参数
+            if (parameters_.is_global_otsu) {
+                motion_status_per_grid1 = VideoMatcherUtils::getMotionStatusGlobalOtsu(motion_count_per_grid1, parameters_.otsu_min_threshold);
+                motion_status_per_grid2 = VideoMatcherUtils::getMotionStatusGlobalOtsu(motion_count_per_grid2, parameters_.otsu_min_threshold);
+            } else {
+                motion_status_per_grid1 = VideoMatcherUtils::getMotionStatusWithOtsu(motion_count_per_grid1, parameters_.otsu_min_threshold);
+                motion_status_per_grid2 = VideoMatcherUtils::getMotionStatusWithOtsu(motion_count_per_grid2, parameters_.otsu_min_threshold);
+            }
+        } else {
+            // 使用固定T2阈值
+            motion_status_per_grid1 = VideoMatcherUtils::getMotionStatus(
+                motion_count_per_grid1, parameters_.motion_threshold1[i]);
+            motion_status_per_grid2 = VideoMatcherUtils::getMotionStatus(
+                motion_count_per_grid2, parameters_.motion_threshold2[i]);
+        }
         
         VideoMatcherUtils::saveNpyFiles(video_path1, motion_status_per_grid1, temp_grid_size, parameters_.motion_status_path);
         VideoMatcherUtils::saveNpyFiles(video_path2, motion_status_per_grid2, temp_grid_size2, parameters_.motion_status_path);
@@ -134,7 +175,7 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
                 auto end_time = std::chrono::high_resolution_clock::now();
                 auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
                 
-                std::ofstream log_file("/mnt/mDisk/Project/CityCam/Output/citydata.txt", std::ios::app);
+                std::ofstream log_file("./Output/citydata.txt", std::ios::app);
                 if (log_file.is_open()) {
                     log_file << "Matching " << iterate_time << "th iteration: Grid size: " 
                              << temp_grid_size.width << "x" << temp_grid_size.height << "::"

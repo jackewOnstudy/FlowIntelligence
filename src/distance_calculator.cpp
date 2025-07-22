@@ -15,25 +15,25 @@ float DistanceCalculator::logicAndDistance(const std::vector<bool>& x, const std
     }
     
     // 计算逻辑与的结果
-    int and_count = 0;
+            int and_count = 0;
     int sum_x = 0, sum_y = 0;
-    
+            
     for (size_t i = 0; i < x.size(); ++i) {
         if (x[i] && y[i]) {
-            and_count++;
-        }
+                    and_count++;
+                }
         if (x[i]) sum_x++;
         if (y[i]) sum_y++;
-    }
-    
+            }
+            
     if (sum_x == 0 && sum_y == 0) {
         return 0.0f;
     }
     
     // Python版本的计算公式：1 - np.sum(np.logical_and(x, y)) / (np.sum(x) + np.sum(y)) * 2
     return 1.0f - (2.0f * and_count) / (sum_x + sum_y);
-}
-
+        }
+        
 float DistanceCalculator::logicXorDistance(const std::vector<bool>& x, const std::vector<bool>& y) {
     // 对应Python的logic_xonr_distance函数
     if (x.size() != y.size()) {
@@ -71,13 +71,13 @@ float DistanceCalculator::segmentSimilarity(const std::vector<bool>& segment1,
         for (size_t i = 0; i < segment1.size(); ++i) {
             if (segment1[i] != segment2[i]) {
                 diff_count++;
-            }
-        }
+                    }
+                }
         return static_cast<float>(diff_count) / segment1.size();
     } else {
         throw std::invalid_argument("Unsupported distance metric: " + distance_metric);
-    }
-}
+                    }
+                }
 
 
 

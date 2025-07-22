@@ -19,6 +19,10 @@ struct Parameters {
     cv::Size GaussianBlurKernel;
     int Binary_threshold;
     int max_frames;  // 最大处理帧数（可根据网格大小自动调整）
+    bool use_otsu_t1;  // 是否在帧差分时使用Otsu阈值
+    bool use_otsu_t2;  // 是否在运动状态判断时使用Otsu阈值
+    bool is_global_otsu;  // 是否使用全局Otsu（true）还是网格内Otsu（false）
+    float otsu_min_threshold;  // Otsu阈值的最小值
     
     // 网格参数
     cv::Size grid_size;   // 初始网格大小
@@ -57,6 +61,10 @@ struct Parameters {
         GaussianBlurKernel = cv::Size(11, 11);
         Binary_threshold = 6;
         max_frames = 3000;  // 减少处理帧数以避免内存问题
+        use_otsu_t1 = false;  // 默认不使用T1的Otsu阈值
+        use_otsu_t2 = false;  // 默认不使用T2的Otsu阈值
+        is_global_otsu = false;  // 默认使用网格内Otsu
+        otsu_min_threshold = 1.0f;  // Otsu最小阈值
         
         grid_size = cv::Size(8, 8);
         grid_size2 = cv::Size(8, 8);

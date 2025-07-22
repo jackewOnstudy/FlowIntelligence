@@ -231,6 +231,204 @@ cv::Mat VideoMatcherUtils::getMotionStatus(const cv::Mat& motion_count, int moti
     return motion_status;
 }
 
+cv::Mat VideoMatcherUtils::getMotionCountWithOtsu(const std::string& video_path, 
+                                                  const cv::Size& stride, const cv::Size& grid_size,
+                                                  const Parameters& params, int& num_cols, int& num_rows) {
+    // 对应Python的get_motion_count_with_otsu函数
+    cv::VideoCapture cap(video_path);
+    if (!cap.isOpened()) {
+        throw std::runtime_error("Error: Could not open video: " + video_path);
+    }
+    
+    cv::Size GaussianBlurKernel = params.GaussianBlurKernel;
+    
+    int stride_w = stride.width, stride_h = stride.height;
+    int grid_w = grid_size.width, grid_h = grid_size.height;
+    
+    // 获取视频帧的宽和高和帧数
+    int frame_w = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
+    int frame_h = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+    int total_frames = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
+    
+    // 计算网格数量
+    num_cols = (frame_w - grid_w) / stride_w + 1;
+    num_rows = (frame_h - grid_h) / stride_h + 1;
+    int total_grids = num_cols * num_rows;
+    
+    std::filesystem::path path(video_path);
+    std::string file_name = path.stem().string();
+    
+    std::cout << "Processing " << file_name << " frames with Otsu thresholding..." << std::endl;
+    
+    int effective_max_frames = params.max_frames;
+    
+    // 设置初始帧
+    cv::Mat frame, prev_frame_gray;
+    cap >> frame;
+    cv::cvtColor(frame, prev_frame_gray, cv::COLOR_BGR2GRAY);
+    cv::GaussianBlur(prev_frame_gray, prev_frame_gray, GaussianBlurKernel, 0);
+    
+    std::vector<std::vector<int>> motion_timestamps_per_grid;
+    
+    // 处理指定帧数或直到视频结束
+    for (int frame_idx = 0; frame_idx < effective_max_frames && cap.read(frame); frame_idx += 2) {
+        // 隔帧读取
+        if (!cap.read(frame)) break;
+        
+        cv::Mat frame_gray;
+        cv::cvtColor(frame, frame_gray, cv::COLOR_BGR2GRAY);
+        cv::GaussianBlur(frame_gray, frame_gray, GaussianBlurKernel, 0);
+        
+        // 计算当前帧和前一帧的差异
+        cv::Mat frame_diff;
+        cv::absdiff(prev_frame_gray, frame_gray, frame_diff);
+        cv::GaussianBlur(frame_diff, frame_diff, GaussianBlurKernel, 0);
+        
+        // 使用Otsu自动计算阈值进行帧间差分二值化
+        cv::Mat binary_diff;
+        cv::threshold(frame_diff, binary_diff, 0, 1, cv::THRESH_BINARY + cv::THRESH_OTSU);
+        
+        std::vector<int> motion_timestamps_grid;
+        
+        // 遍历每个小网格
+        for (int i = 0; i < num_rows; ++i) {
+            for (int j = 0; j < num_cols; ++j) {
+                // 计算当前网格的坐标
+                int grid_x = j * stride_w;
+                int grid_y = i * stride_h;
+                
+                // 提取当前网格区域
+                cv::Rect grid_rect(grid_x, grid_y, grid_w, grid_h);
+                cv::Mat grid_region = binary_diff(grid_rect);
+                
+                // 计算区域内运动像素数量
+                int motion_sum = cv::sum(grid_region)[0];
+                motion_timestamps_grid.push_back(motion_sum);
+            }
+        }
+        
+        motion_timestamps_per_grid.push_back(motion_timestamps_grid);
+        prev_frame_gray = frame_gray.clone();
+        
+        if (frame_idx % 100 == 0) {
+            std::cout << "Processed " << frame_idx << " frames" << std::endl;
+        }
+    }
+    
+    cap.release();
+    
+    // 转换为cv::Mat格式，每行对应一个网格的时间序列
+    cv::Mat result(total_grids, motion_timestamps_per_grid.size(), CV_32S);
+    
+    for (int grid = 0; grid < total_grids; ++grid) {
+        for (size_t frame = 0; frame < motion_timestamps_per_grid.size(); ++frame) {
+            result.at<int>(grid, frame) = motion_timestamps_per_grid[frame][grid];
+        }
+    }
+    
+    std::cout << "Motion count extraction with Otsu completed." << std::endl;
+    return result;
+}
+
+double VideoMatcherUtils::calculateOtsuThreshold(const cv::Mat& data) {
+    // 计算Otsu阈值的简化版本
+    double minVal, maxVal;
+    cv::minMaxLoc(data, &minVal, &maxVal);
+    
+    if (maxVal == minVal) {
+        return minVal;
+    }
+    
+    // 使用OpenCV内置的Otsu阈值计算
+    cv::Mat data_8u;
+    data.convertTo(data_8u, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
+    
+    double threshold_8u = cv::threshold(data_8u, cv::Mat(), 0, 255, cv::THRESH_BINARY + cv::THRESH_OTSU);
+    
+    // 将阈值转换回原始数据范围
+    double threshold = minVal + (threshold_8u / 255.0) * (maxVal - minVal);
+    
+    return threshold;
+}
+
+cv::Mat VideoMatcherUtils::getMotionStatusWithOtsu(const cv::Mat& motion_count, float min_threshold) {
+    // 对应Python的get_motion_status_with_otsu函数
+    // 网格内自适应阈值
+    int num_grids = motion_count.rows;
+    int seq_len = motion_count.cols;
+    
+    cv::Mat motion_status = cv::Mat::zeros(num_grids, seq_len, CV_8U);
+    
+    for (int grid_idx = 0; grid_idx < num_grids; ++grid_idx) {
+        cv::Mat counts = motion_count.row(grid_idx);
+        
+        // 检查数据是否有效（避免全零或单一值）
+        double minVal, maxVal;
+        cv::minMaxLoc(counts, &minVal, &maxVal);
+        
+        double threshold;
+        if (maxVal == minVal) {
+            // 如果所有值都相同，直接使用最小阈值
+            threshold = min_threshold;
+        } else {
+            try {
+                threshold = calculateOtsuThreshold(counts);
+            } catch (...) {
+                std::cout << "Warning: Otsu threshold failed for grid " << grid_idx << ", using min_threshold." << std::endl;
+                threshold = min_threshold;
+            }
+        }
+        
+        threshold = std::max(threshold, static_cast<double>(min_threshold));
+        
+        // 二值化：大于阈值的判为 1（有运动），否则为 0
+        for (int j = 0; j < seq_len; ++j) {
+            motion_status.at<uchar>(grid_idx, j) = (counts.at<int>(0, j) > threshold) ? 1 : 0;
+        }
+    }
+    
+    return motion_status;
+}
+
+cv::Mat VideoMatcherUtils::getMotionStatusGlobalOtsu(const cv::Mat& motion_count, float min_threshold) {
+    // 对应Python的get_motion_status_global_otsu函数
+    // 全局自适应阈值
+    int num_grids = motion_count.rows;
+    int seq_len = motion_count.cols;
+    
+    cv::Mat motion_status = cv::Mat::zeros(num_grids, seq_len, CV_8U);
+    
+    // 对每一帧进行全局Otsu阈值计算
+    for (int t = 0; t < seq_len; ++t) {
+        cv::Mat counts = motion_count.col(t);
+        
+        // 检查数据是否有效
+        double minVal, maxVal;
+        cv::minMaxLoc(counts, &minVal, &maxVal);
+        
+        double threshold;
+        if (maxVal == minVal) {
+            threshold = min_threshold;
+        } else {
+            try {
+                threshold = calculateOtsuThreshold(counts);
+            } catch (...) {
+                std::cout << "Warning: Global Otsu threshold failed for frame " << t << ", using min_threshold." << std::endl;
+                threshold = min_threshold;
+            }
+        }
+        
+        threshold = std::max(threshold, static_cast<double>(min_threshold));
+        
+        // 根据阈值标记所有网格
+        for (int grid_idx = 0; grid_idx < num_grids; ++grid_idx) {
+            motion_status.at<uchar>(grid_idx, t) = (counts.at<int>(grid_idx, 0) > threshold) ? 1 : 0;
+        }
+    }
+    
+    return motion_status;
+}
+
 std::vector<MatchTriplet> VideoMatcherUtils::processTriplets(const std::vector<MatchTriplet>& triplets) {
     // 对应Python的process_triplets函数
     std::set<int> used_p2;

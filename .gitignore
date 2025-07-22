@@ -1,5 +1,6 @@
 *.mp4
 *.txt
+*.pyc
 /build
 /Output
 /TEST_OUTPUT

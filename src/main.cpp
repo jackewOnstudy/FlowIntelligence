@@ -32,6 +32,9 @@ void printUsage(const char* program_name) {
               << "  --max-mismatches <count>    最大不匹配段数 (默认: 3)\n"
               << "  --propagate-step <step>     传播步长 (默认: 1)\n"
               << "  --max-frames <count>        最大处理帧数 (默认: 1000)\n"
+              << "  --use-otsu-t1               在帧差分时使用Otsu阈值\n"
+              << "  --use-otsu-t2               在运动状态判断时使用Otsu阈值\n"
+              << "  --global-otsu               使用全局Otsu阈值（而非网格内Otsu）\n"
               << "  -h, --help                  显示此帮助信息\n";
 }
 
@@ -73,6 +76,12 @@ Parameters parseArguments(int argc, char* argv[]) {
             params.propagate_step = std::stoi(argv[++i]);
         } else if (arg == "--max-frames" && i + 1 < argc) {
             params.max_frames = std::stoi(argv[++i]);
+        } else if (arg == "--use-otsu-t1") {
+            params.use_otsu_t1 = true;
+        } else if (arg == "--use-otsu-t2") {
+            params.use_otsu_t2 = true;
+        } else if (arg == "--global-otsu") {
+            params.is_global_otsu = true;
         }
     }
     
@@ -101,7 +110,10 @@ int main(int argc, char* argv[]) {
                   << "  分段长度: " << params.segment_length << "\n"
                   << "  最大不匹配段数: " << params.max_mismatches << "\n"
                   << "  传播步长: " << params.propagate_step << "\n"
-                  << "  最大处理帧数: " << params.max_frames << "\n\n";
+                  << "  最大处理帧数: " << params.max_frames << "\n"
+                  << "  使用Otsu T1阈值: " << (params.use_otsu_t1 ? "是" : "否") << "\n"
+                  << "  使用Otsu T2阈值: " << (params.use_otsu_t2 ? "是" : "否") << "\n"
+                  << "  全局Otsu模式: " << (params.is_global_otsu ? "是" : "否") << "\n\n";
         
         // 创建视频匹配器
         VideoMatcherEngine matcher(params);

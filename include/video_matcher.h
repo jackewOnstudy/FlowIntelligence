@@ -92,6 +92,14 @@ public:
     // 运动状态计算
     static cv::Mat getMotionStatus(const cv::Mat& motion_count, int motion_threshold);
     
+    // Otsu自适应阈值相关功能
+    static cv::Mat getMotionCountWithOtsu(const std::string& video_path, 
+                                         const cv::Size& stride, const cv::Size& grid_size,
+                                         const Parameters& params, int& num_cols, int& num_rows);
+    static cv::Mat getMotionStatusWithOtsu(const cv::Mat& motion_count, float min_threshold = 1.0f);
+    static cv::Mat getMotionStatusGlobalOtsu(const cv::Mat& motion_count, float min_threshold = 1.0f);
+    static double calculateOtsuThreshold(const cv::Mat& data);
+    
     // 结果处理
     static std::vector<MatchTriplet> processTriplets(const std::vector<MatchTriplet>& triplets);
     
