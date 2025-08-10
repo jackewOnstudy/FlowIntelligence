@@ -10,6 +10,7 @@
 #include <unordered_map>  // 新增：高效哈希映射
 #include <unordered_set>  // 新增：高效哈希集合
 #include "parameters.h"
+#include "time_alignment.h"  // 时间对齐模块
 
 namespace VideoMatcher {
 
@@ -227,9 +228,18 @@ public:
     static cv::Mat getMotionStatusGlobalOtsu(const cv::Mat& motion_count, float min_threshold = 1.0f);
     static double calculateOtsuThreshold(const cv::Mat& data);
     
-    // 结果处理 - 优化版本
+    // 结果处理 
     static std::vector<MatchTriplet> processTriplets(const std::vector<MatchTriplet>& triplets);
     
+    // 匹配结果保存 
+    static void saveMatchResultList(const std::string& video_path, const std::vector<MatchTriplet>& match_result,
+                                   const cv::Size& grid_size, const std::string& output_path);
+
+    
+    // 匹配结果加载 
+    static std::vector<MatchTriplet> loadMatchResultList(const std::string& video_path, const cv::Size& grid_size,
+                                                        const std::string& output_path);
+
     // 结果可视化
     static void matchResultView(const std::string& path, const std::vector<MatchTriplet>& match_result,
                                const cv::Size& grid_size, const cv::Size& stride, 
@@ -260,6 +270,7 @@ class VideoMatcherEngine {
 private:
     Parameters parameters_;
     std::unique_ptr<MemoryCache> cache_;  // 内存缓存 - 新增优化
+    std::unique_ptr<TimeAlignmentEngine> time_alignment_engine_;  // 时间对齐引擎
     static const int ITERATE_TIMES = 4;
     
     // 预分配的内存缓冲区 - 新增优化

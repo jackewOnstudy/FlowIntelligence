@@ -10,6 +10,15 @@ VideoMatcherEngine::VideoMatcherEngine(const Parameters& params)
     : parameters_(params), cache_(std::make_unique<MemoryCache>()) {
     // 构造函数，对应Python的参数初始化 - 新增内存优化
     
+    // 初始化时间对齐引擎
+    TimeAlignmentParameters time_params;
+    time_params.enable_time_alignment = params.enable_time_alignment;
+    time_params.max_time_offset = params.max_time_offset;
+    time_params.region_grid_size = params.time_alignment_region_size;
+    time_params.similarity_threshold = params.time_alignment_similarity_threshold;
+    time_params.min_reliable_regions = params.time_alignment_min_regions;
+    time_alignment_engine_ = std::make_unique<TimeAlignmentEngine>(time_params);
+    
     // 预分配缓冲区以减少运行时内存分配
     preallocateBuffers(1000);  // 预分配合理大小的缓冲区
 }
@@ -85,12 +94,35 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
         }
     } else {
         // 使用固定T2阈值
+        std::cout << "使用固定T2阈值进行运动状态判断..." << std::endl;
         motion_status_per_grid1 = VideoMatcherUtils::getMotionStatus(motion_count_per_grid1, parameters_.motion_threshold1[0]);
         motion_status_per_grid2 = VideoMatcherUtils::getMotionStatus(motion_count_per_grid2, parameters_.motion_threshold2[0]);
     }
     
     VideoMatcherUtils::saveNpyFiles(video_path1, motion_status_per_grid1, grid_size, parameters_.motion_status_path);
     VideoMatcherUtils::saveNpyFiles(video_path2, motion_status_per_grid2, grid_size2, parameters_.motion_status_path);
+    
+    // ======================================== 时间对齐检测与补偿 ========================================
+    if (parameters_.enable_time_alignment && time_alignment_engine_) {
+        std::cout << "开始时间对齐检测..." << std::endl;
+        
+        auto alignment_result = time_alignment_engine_->detectTimeOffset(motion_status_per_grid1, motion_status_per_grid2);
+        
+        if (alignment_result.is_valid && std::abs(alignment_result.detected_offset) > 0) {
+            std::cout << "检测到时间偏移 " << alignment_result.detected_offset << " 帧，应用补偿..." << std::endl;
+            
+            // 应用时间偏移补偿到第二个视频的运动状态
+            motion_status_per_grid2 = TimeAlignmentEngine::applyTimeOffset(motion_status_per_grid2, alignment_result.detected_offset);
+            
+            // 保存调整后的运动状态
+            VideoMatcherUtils::saveNpyFiles(video_path2, motion_status_per_grid2, grid_size2, 
+                                          parameters_.motion_status_path + "_aligned");
+            
+            std::cout << "时间对齐补偿完成，置信度: " << alignment_result.confidence << std::endl;
+        } else {
+            std::cout << "未检测到明显的时间偏移或检测失败" << std::endl;
+        }
+    }
     
     // ======================================== 构造4N倍大网格 ========================================
     std::cout << "构造分层网格结构..." << std::endl;
@@ -132,7 +164,12 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
         }
         
         VideoMatcherUtils::saveNpyFiles(video_path1, motion_status_per_grid1, temp_grid_size, parameters_.motion_status_path);
-        VideoMatcherUtils::saveNpyFiles(video_path2, motion_status_per_grid2, temp_grid_size2, parameters_.motion_status_path);
+        
+        // 保存到对齐后的路径（如果启用了时间对齐）
+        std::string save_path2 = parameters_.enable_time_alignment ? 
+                                 parameters_.motion_status_path + "_aligned" : 
+                                 parameters_.motion_status_path;
+        VideoMatcherUtils::saveNpyFiles(video_path2, motion_status_per_grid2, temp_grid_size2, save_path2);
     }
     
     // ======================================== 分层匹配 ========================================
@@ -148,7 +185,12 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
                   << temp_grid_size2.width << "x" << temp_grid_size2.height << std::endl;
         
         motion_status_per_grid1 = VideoMatcherUtils::loadNpyFiles(video_path1, temp_grid_size, parameters_.motion_status_path);
-        motion_status_per_grid2 = VideoMatcherUtils::loadNpyFiles(video_path2, temp_grid_size2, parameters_.motion_status_path);
+        
+        // 使用对齐后的路径（如果启用了时间对齐）
+        std::string load_path2 = parameters_.enable_time_alignment ? 
+                                parameters_.motion_status_path + "_aligned" : 
+                                parameters_.motion_status_path;
+        motion_status_per_grid2 = VideoMatcherUtils::loadNpyFiles(video_path2, temp_grid_size2, load_path2);
         
         // 将长序列分为多个阶段进行匹配
         auto motion_status_per_grid1_segments = SegmentMatcher::segmentMatrix(
@@ -229,9 +271,12 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
         VideoMatcherUtils::matchResultView(video_path2, match_result, temp_grid_size2, stride2, 
                                           parameters_.match_result_view_path, 2);
         
-        // 保存匹配结果到列表
-        // 这里可以添加保存match_result_all的逻辑
-        all_match_results.push_back(match_result_all[0]); // 简化版本，只保存第一个结果
+        // 保存每次迭代的匹配结果 - 新增功能
+        VideoMatcherUtils::saveMatchResultList(video_path1, match_result, temp_grid_size, 
+                                              parameters_.match_result_path);
+        
+        // 保存匹配结果到返回列表
+        all_match_results.push_back(match_result); // 保存当前迭代的match_result
         
         // 为下一次迭代准备
         cv::Size small_grid_size(temp_grid_size.width / 2, temp_grid_size.height / 2);
@@ -249,6 +294,7 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
             num_rows2 += 1;
         }
         
+        std::cout << "Calculate small grid index..." << std::endl;
         sorted_large_grid_corre_small_dict = VideoMatcherUtils::getSmallGridIndex(
             match_result, parameters_.video_size2, small_grid_size2, temp_grid_size2, shifting_flag, 2);
         

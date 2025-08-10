@@ -23,7 +23,7 @@ def get_first_frame(video_path):
     # video_dir = os.path.dirname(video_path)
     video_name = os.path.splitext(os.path.basename(video_path))[0]
     # save_dir = os.path.join(video_dir, "first_frame")
-    save_dir = "./first_frame"
+    save_dir = "/home/jackew/Project/FlowIntelligence/first_frame"
     
     # 创建保存目录
     os.makedirs(save_dir, exist_ok=True)
@@ -38,5 +38,5 @@ def get_first_frame(video_path):
     print(f"已保存第一帧到: {save_path}")
     return True
 
-get_first_frame("/home/jackew/Project/FlowIntelligence/T10L.mp4")
-get_first_frame("/home/jackew/Project/FlowIntelligence/T10R.mp4")
+get_first_frame("/home/jackew/Project/FlowIntelligence/OTCBVS5L.mp4")
+get_first_frame("/home/jackew/Project/FlowIntelligence/OTCBVS5R.mp4")

@@ -35,6 +35,9 @@ void printUsage(const char* program_name) {
               << "  --use-otsu-t1               在帧差分时使用Otsu阈值\n"
               << "  --use-otsu-t2               在运动状态判断时使用Otsu阈值\n"
               << "  --global-otsu               使用全局Otsu阈值（而非网格内Otsu）\n"
+              << "  --enable-time-alignment     启用时间对齐补偿\n"
+              << "  --max-time-offset <frames>  最大时间偏移搜索范围 (默认: 30)\n"
+              << "  --time-align-threshold <val> 时间对齐相似性阈值 (默认: 0.6)\n"
               << "  -h, --help                  显示此帮助信息\n";
 }
 
@@ -82,6 +85,12 @@ Parameters parseArguments(int argc, char* argv[]) {
             params.use_otsu_t2 = true;
         } else if (arg == "--global-otsu") {
             params.is_global_otsu = true;
+        } else if (arg == "--enable-time-alignment") {
+            params.enable_time_alignment = true;
+        } else if (arg == "--max-time-offset" && i + 1 < argc) {
+            params.max_time_offset = std::stoi(argv[++i]);
+        } else if (arg == "--time-align-threshold" && i + 1 < argc) {
+            params.time_alignment_similarity_threshold = std::stof(argv[++i]);
         }
     }
     
@@ -90,7 +99,6 @@ Parameters parseArguments(int argc, char* argv[]) {
 
 int main(int argc, char* argv[]) {
     std::cout << "视频Patch匹配系统启动\n";
-    std::cout << "基于论文: https://arxiv.org/abs/2504.11949\n\n";
     
     try {
         // 解析参数
@@ -113,7 +121,14 @@ int main(int argc, char* argv[]) {
                   << "  最大处理帧数: " << params.max_frames << "\n"
                   << "  使用Otsu T1阈值: " << (params.use_otsu_t1 ? "是" : "否") << "\n"
                   << "  使用Otsu T2阈值: " << (params.use_otsu_t2 ? "是" : "否") << "\n"
-                  << "  全局Otsu模式: " << (params.is_global_otsu ? "是" : "否") << "\n\n";
+                  << "  全局Otsu模式: " << (params.is_global_otsu ? "是" : "否") << "\n"
+                  << "  启用时间对齐: " << (params.enable_time_alignment ? "是" : "否") << "\n";
+        
+        if (params.enable_time_alignment) {
+            std::cout << "  最大时间偏移: " << params.max_time_offset << " 帧\n"
+                      << "  相似性阈值: " << params.time_alignment_similarity_threshold << "\n";
+        }
+        std::cout << "\n";
         
         // 创建视频匹配器
         VideoMatcherEngine matcher(params);

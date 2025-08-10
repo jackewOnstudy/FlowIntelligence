@@ -215,7 +215,12 @@ cv::Mat VideoMatcherUtils::get4nGridMotionCount(const cv::Mat& motion_count_per_
 cv::Mat VideoMatcherUtils::getMotionStatus(const cv::Mat& motion_count, int motion_threshold) {
     // 对应Python的get_motion_status函数 - 优化版本
     cv::Mat motion_status;
-    cv::threshold(motion_count, motion_status, motion_threshold, 1, cv::THRESH_BINARY);
+    
+    // 将CV_32S类型转换为CV_32F类型，因为cv::threshold不支持CV_32S
+    cv::Mat motion_count_float;
+    motion_count.convertTo(motion_count_float, CV_32F);
+    
+    cv::threshold(motion_count_float, motion_status, static_cast<float>(motion_threshold), 1, cv::THRESH_BINARY);
     motion_status.convertTo(motion_status, CV_8U);
     return motion_status;
 }
@@ -482,6 +487,71 @@ std::vector<MatchTriplet> VideoMatcherUtils::processTriplets(const std::vector<M
     }
     
     return result;
+}
+
+void VideoMatcherUtils::saveMatchResultList(const std::string& video_path, const std::vector<MatchTriplet>& match_result,
+                                           const cv::Size& grid_size, const std::string& output_path) {
+    // 对应Python的save_match_result_list函数
+    std::filesystem::path video_path_obj(video_path);
+    std::string file_name = video_path_obj.stem().string();
+    std::string file_folder = file_name.substr(0, file_name.length() - 1);
+    
+    std::string output_folder = output_path + "/" + file_folder;
+    std::filesystem::create_directories(output_folder);
+    
+    std::string f_grid = std::to_string(grid_size.width) + "x" + std::to_string(grid_size.height);
+    std::string output_file = output_folder + "/" + f_grid + ".txt";
+    
+    std::ofstream file(output_file);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file for writing: " << output_file << std::endl;
+        return;
+    }
+    
+    // 写入匹配结果数量
+    file << match_result.size() << std::endl;
+    
+    // 写入每个匹配三元组
+    for (const auto& triplet : match_result) {
+        file << triplet.grid1 << " " << triplet.grid2 << " " << triplet.distance << std::endl;
+    }
+    
+    file.close();
+    std::cout << output_file << " Saved!" << std::endl;
+}
+
+std::vector<MatchTriplet> VideoMatcherUtils::loadMatchResultList(const std::string& video_path, const cv::Size& grid_size,
+                                                                const std::string& output_path) {
+    // 对应Python的load_match_result_list函数
+    std::filesystem::path video_path_obj(video_path);
+    std::string file_name = video_path_obj.stem().string();
+    std::string file_folder = file_name.substr(0, file_name.length() - 1);
+    
+    std::string f_grid = std::to_string(grid_size.width) + "x" + std::to_string(grid_size.height);
+    std::string load_file = output_path + "/" + file_folder + "/" + f_grid + ".txt";
+    
+    std::vector<MatchTriplet> match_result;
+    std::ifstream file(load_file);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file for reading: " << load_file << std::endl;
+        return match_result;
+    }
+    
+    size_t num_results;
+    file >> num_results;
+    match_result.reserve(num_results);
+    
+    for (size_t i = 0; i < num_results; ++i) {
+        int grid1, grid2;
+        float distance;
+        if (file >> grid1 >> grid2 >> distance) {
+            match_result.emplace_back(grid1, grid2, distance);
+        }
+    }
+    
+    file.close();
+    std::cout << load_file << " Loaded!" << std::endl;
+    return match_result;
 }
 
 void VideoMatcherUtils::matchResultView(const std::string& path, const std::vector<MatchTriplet>& match_result,

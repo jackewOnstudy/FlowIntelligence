@@ -47,16 +47,25 @@ struct Parameters {
     std::string match_result_path;
     std::string match_result_view_path;
     
+    // 时间对齐参数
+    bool enable_time_alignment;         // 是否启用时间对齐
+    int max_time_offset;               // 最大搜索偏移范围（帧数）
+    int time_alignment_region_size;    // 区域划分网格大小
+    float time_alignment_similarity_threshold;  // 相似性阈值
+    int time_alignment_min_regions;    // 最少可靠区域对数
+    
     // 默认构造函数
     Parameters() {
         // 初始化默认参数 - 对应Python中的param_T0_B201
         video_name1 = "T10L.mp4";
         video_name2 = "T10R.mp4";
-        video_size1 = cv::Size(1920, 1080);
-        video_size2 = cv::Size(1920, 1080);
+        // video_size1 = cv::Size(1920, 1080);
+        // video_size2 = cv::Size(1920, 1080);
+        video_size1 = cv::Size(320, 240);
+        video_size2 = cv::Size(320, 240);
         
-        motion_threshold1 = {24, 80, 160, 400};
-        motion_threshold2 = {24, 80, 160, 400};
+        motion_threshold1 = {24, 80, 160, 200};
+        motion_threshold2 = {24, 80, 160, 200};
         
         GaussianBlurKernel = cv::Size(11, 11);
         Binary_threshold = 6;
@@ -71,11 +80,11 @@ struct Parameters {
         stride = cv::Size(8, 8);
         stride2 = cv::Size(8, 8);
         
-        segment_length = 100;
+        segment_length = 800;
         max_mismatches = 1;
         distance_metric = "logic_and";
-        select_grid_factor = 10;
-        mismatch_distance_factor = 4;
+        select_grid_factor = 20;
+        mismatch_distance_factor = 9;
         stage_length = 9000;
         propagate_step = 1;
         
@@ -85,6 +94,13 @@ struct Parameters {
         motion_counts_path = base_output_folder + "/MotionCounts";
         match_result_path = base_output_folder + "/MatchResult/List";
         match_result_view_path = base_output_folder + "/MatchResult/Pictures";
+        
+        // 时间对齐参数默认值
+        enable_time_alignment = false;    // 默认关闭时间对齐
+        max_time_offset = 30;            // 最大搜索30帧偏移
+        time_alignment_region_size = 4;  // 4x4=16个区域
+        time_alignment_similarity_threshold = 0.6f;  // 相似性阈值
+        time_alignment_min_regions = 3;  // 至少3个可靠区域
     }
 };
 

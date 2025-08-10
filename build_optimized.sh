@@ -76,6 +76,7 @@ echo "构建类型: Release (最佳性能)"
 echo "编译器优化: -O3 -march=native -mavx2 -flto"
 echo "并行化: OpenMP"
 echo "SIMD指令: AVX2, FMA, POPCNT"
+echo "新功能: 时间对齐模块 (局部运动模式相似性)"
 echo ""
 
 # 执行CMake配置
@@ -100,6 +101,26 @@ make -j$(nproc)
 if [ $? -ne 0 ]; then
     echo "❌ 编译失败"
     exit 1
+fi
+
+# 编译时间对齐测试示例（可选）
+echo ""
+echo "🔧 构建时间对齐测试示例..."
+if [ -f "../examples/test_time_alignment.cpp" ]; then
+    g++ -O3 -march=native -mavx2 -fopenmp \
+        -I../include \
+        -o test_time_alignment \
+        ../examples/test_time_alignment.cpp \
+        ../src/time_alignment.cpp \
+        $(pkg-config --cflags --libs opencv4 2>/dev/null || pkg-config --cflags --libs opencv)
+    
+    if [ $? -eq 0 ]; then
+        echo "✅ 时间对齐测试示例编译成功: $(pwd)/test_time_alignment"
+    else
+        echo "⚠️  时间对齐测试示例编译失败（非致命错误）"
+    fi
+else
+    echo "⚠️  未找到时间对齐测试示例源文件"
 fi
 
 echo ""
@@ -134,24 +155,40 @@ if [ -f "FlowIntelligence" ]; then
     echo "1. 基本运行:"
     echo "   ./FlowIntelligence --video1 video1.mp4 --video2 video2.mp4"
     echo ""
-    echo "2. 优化运行 (设置CPU亲和性):"
+    echo "2. 启用时间对齐功能:"
+    echo "   ./FlowIntelligence --video1 video1.mp4 --video2 video2.mp4 --enable-time-alignment"
+    echo ""
+    echo "3. 优化运行 (设置CPU亲和性):"
     echo "   taskset -c 0-$(($(nproc)-1)) ./FlowIntelligence [参数]"
     echo ""
-    echo "3. 设置OpenMP线程数:"
+    echo "4. 设置OpenMP线程数:"
     echo "   export OMP_NUM_THREADS=$(nproc)"
     echo "   ./FlowIntelligence [参数]"
     echo ""
-    echo "4. 完整优化运行:"
+    echo "5. 完整优化运行 (含时间对齐):"
     echo "   export OMP_NUM_THREADS=$(nproc)"
     echo "   taskset -c 0-$(($(nproc)-1)) ./FlowIntelligence \\"
     echo "     --video1 video1.mp4 --video2 video2.mp4 \\"
     echo "     --output-path ./output \\"
-    echo "     --max-frames 1000"
+    echo "     --max-frames 1000 \\"
+    echo "     --enable-time-alignment \\"
+    echo "     --max-time-offset 30 \\"
+    echo "     --time-align-threshold 0.6"
     echo ""
-    echo "📖 详细文档请参考: ../OPTIMIZATION_SUMMARY.md"
+    echo "📖 详细文档请参考:"
+    echo "   - 性能优化: ../OPTIMIZATION_SUMMARY.md"
+    echo "   - 时间对齐: ../docs/TIME_ALIGNMENT_README.md"
+    echo ""
+    echo "🧪 测试时间对齐功能:"
+    if [ -f "test_time_alignment" ]; then
+        echo "   ./test_time_alignment"
+    else
+        echo "   (测试示例未构建)"
+    fi
     echo ""
     echo "=================================================="
     echo "   构建完成! 享受高性能视频匹配体验 🎯"
+    echo "   ✨ 新功能：智能时间对齐补偿"
     echo "=================================================="
 else
     echo "❌ 未找到可执行文件"
