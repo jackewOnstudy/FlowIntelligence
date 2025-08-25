@@ -38,6 +38,7 @@ void printUsage(const char* program_name) {
               << "  --enable-time-alignment     启用时间对齐补偿\n"
               << "  --max-time-offset <frames>  最大时间偏移搜索范围 (默认: 30)\n"
               << "  --time-align-threshold <val> 时间对齐相似性阈值 (默认: 0.6)\n"
+              << "  --csv-log <path>            CSV日志文件路径\n"
               << "  -h, --help                  显示此帮助信息\n";
 }
 
@@ -54,7 +55,7 @@ Parameters parseArguments(int argc, char* argv[]) {
             params.video_name1 = argv[++i];
         } else if (arg == "--video2" && i + 1 < argc) {
             params.video_name2 = argv[++i];
-        } else if (arg == "--dataset-path" && i + 1 < argc) {
+        } else if (arg == "--dataset_path" && i + 1 < argc) {
             params.dataset_path = argv[++i];
         } else if (arg == "--output-path" && i + 1 < argc) {
             params.base_output_folder = argv[++i];
@@ -91,6 +92,8 @@ Parameters parseArguments(int argc, char* argv[]) {
             params.max_time_offset = std::stoi(argv[++i]);
         } else if (arg == "--time-align-threshold" && i + 1 < argc) {
             params.time_alignment_similarity_threshold = std::stof(argv[++i]);
+        } else if (arg == "--csv-log" && i + 1 < argc) {
+            params.csv_log_file_path = argv[++i];
         }
     }
     

@@ -46,6 +46,7 @@ struct Parameters {
     std::string motion_counts_path;
     std::string match_result_path;
     std::string match_result_view_path;
+    std::string csv_log_file_path;  // CSV日志文件路径
     
     // 时间对齐参数
     bool enable_time_alignment;         // 是否启用时间对齐
@@ -61,8 +62,8 @@ struct Parameters {
         video_name2 = "T10R.mp4";
         // video_size1 = cv::Size(1920, 1080);
         // video_size2 = cv::Size(1920, 1080);
-        video_size1 = cv::Size(320, 240);
-        video_size2 = cv::Size(320, 240);
+        video_size1 = cv::Size(960, 540);
+        video_size2 = cv::Size(960, 540);
         
         motion_threshold1 = {24, 80, 160, 200};
         motion_threshold2 = {24, 80, 160, 200};
@@ -88,7 +89,7 @@ struct Parameters {
         stage_length = 9000;
         propagate_step = 1;
         
-        dataset_path = "/home/jackew/Project/FlowIntelligence/";
+        dataset_path = "/home/jackew/Project/FlowIntelligence/Datasets";
         base_output_folder = "./Output";
         motion_status_path = base_output_folder + "/MotionStatus";
         motion_counts_path = base_output_folder + "/MotionCounts";

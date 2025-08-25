@@ -3,8 +3,23 @@
 #include <fstream>
 #include <algorithm>
 #include <chrono>
+#include <iomanip>
+#include <sstream>
 
 namespace VideoMatcher {
+
+// 获取当前时间戳的辅助函数
+static std::string getCurrentTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()) % 1000;
+    
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%dT%H:%M:%S");
+    ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
+    return ss.str();
+}
 
 VideoMatcherEngine::VideoMatcherEngine(const Parameters& params) 
     : parameters_(params), cache_(std::make_unique<MemoryCache>()) {
@@ -37,6 +52,19 @@ void VideoMatcherEngine::preallocateBuffers(size_t expected_size) {
 std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
     // 对应Python的cal_overlap_grid函数
     std::cout << "开始计算overlap grid..." << std::endl;
+    
+    // 初始化CSV日志文件头部
+    if (!parameters_.csv_log_file_path.empty()) {
+        std::ifstream test_file(parameters_.csv_log_file_path);
+        if (!test_file.good()) {
+            std::ofstream csv_file(parameters_.csv_log_file_path);
+            if (csv_file.is_open()) {
+                csv_file << "Timestamp,Video1,Video2,Operation,Level,Step,GridSize1,GridSize2,Duration_ms,Details" << std::endl;
+                csv_file.close();
+            }
+        }
+        test_file.close();
+    }
     
     // 构建视频路径
     std::string video_path1 = parameters_.dataset_path + "/" + parameters_.video_name1;
@@ -232,13 +260,17 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
                 auto end_time = std::chrono::high_resolution_clock::now();
                 auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
                 
-                std::ofstream log_file("./Output/citydata.txt", std::ios::app);
-                if (log_file.is_open()) {
-                    log_file << "Matching " << iterate_time << "th iteration: Grid size: " 
-                             << temp_grid_size.width << "x" << temp_grid_size.height << "::"
-                             << temp_grid_size2.width << "x" << temp_grid_size2.height << std::endl;
-                    log_file << "    Propagate " << i << " time: " << duration.count() << " ms" << std::endl;
-                    log_file.close();
+                if (!parameters_.csv_log_file_path.empty()) {
+                    std::ofstream csv_file(parameters_.csv_log_file_path, std::ios::app);
+                    if (csv_file.is_open()) {
+                        csv_file << getCurrentTimestamp() << ","
+                                 << parameters_.video_name1 << "," << parameters_.video_name2 << ","
+                                 << "propagate," << iterate_time << "," << i << ","
+                                 << temp_grid_size.width << "x" << temp_grid_size.height << ","
+                                 << temp_grid_size2.width << "x" << temp_grid_size2.height << ","
+                                 << duration.count() << "," << std::endl;
+                        csv_file.close();
+                    }
                 }
                 
                 match_result = VideoMatcherUtils::processTriplets(match_result);
@@ -248,6 +280,12 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
         
         // 删除重复的匹配结果
         match_result = VideoMatcherUtils::processTriplets(match_result);
+        
+        // 使用RANSAC算法筛选匹配结果
+        match_result = VideoMatcherUtils::ransacFilterMatchResults(match_result, 
+                                                                  temp_grid_size, temp_grid_size2,
+                                                                  num_cols1, num_rows1, num_cols2, num_rows2,
+                                                                  shifting_flag);
         
         // 打印前16个匹配结果
         std::cout << "前16个匹配结果:" << std::endl;

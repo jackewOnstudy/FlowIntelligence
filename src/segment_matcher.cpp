@@ -7,11 +7,26 @@
 #include <chrono>
 #include <fstream>
 #include <mutex>  // 新增：互斥锁支持
+#include <iomanip>
+#include <sstream>
 #ifdef _OPENMP
 #include <omp.h>  // 新增：OpenMP支持
 #endif
 
 namespace VideoMatcher {
+
+// 获取当前时间戳的辅助函数  
+static std::string getCurrentTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()) % 1000;
+    
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%dT%H:%M:%S");
+    ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
+    return ss.str();
+}
 
 std::vector<std::vector<bool>> SegmentMatcher::segmentSequence(const std::vector<bool>& sequence, int segment_length) {
     // 对应Python的segment_sequence函数 - 优化版本
@@ -319,11 +334,16 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     
-    // 记录匹配耗时
-    std::ofstream log_file("./Output/citydata.txt", std::ios::app);
-    if (log_file.is_open()) {
-        log_file << "Match_匹配耗时: " << duration.count() << " ms\n";
-        log_file.close();
+    // 记录匹配耗时到CSV
+    if (!parameters.csv_log_file_path.empty()) {
+        std::ofstream csv_file(parameters.csv_log_file_path, std::ios::app);
+        if (csv_file.is_open()) {
+            csv_file << getCurrentTimestamp() << ","
+                     << parameters.video_name1 << "," << parameters.video_name2 << ","
+                     << "segment_match,,,,,"
+                     << duration.count() << "," << matching_result.size() << std::endl;
+            csv_file.close();
+        }
     }
     
     return matching_result;

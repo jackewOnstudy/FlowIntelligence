@@ -691,4 +691,85 @@ std::map<int, std::set<int>> VideoMatcherUtils::getSmallGridIndex(const std::vec
     return large_grid_corre_small_dict;
 }
 
+std::vector<MatchTriplet> VideoMatcherUtils::ransacFilterMatchResults(const std::vector<MatchTriplet>& match_results,
+                                                                     const cv::Size& grid_size1, const cv::Size& grid_size2,
+                                                                     int num_cols1, int num_rows1, int num_cols2, int num_rows2,
+                                                                     bool shifting_flag, float ransac_threshold,
+                                                                     int max_iterations, float min_inlier_ratio) {
+    // RANSAC算法筛选匹配结果 - 新增功能
+    if (match_results.size() < 4) {
+        // 匹配结果太少，无法进行RANSAC
+        std::cout << "匹配结果数量过少，跳过RANSAC筛选" << std::endl;
+        return match_results;
+    }
+    
+    std::cout << "开始RANSAC筛选，原始匹配数: " << match_results.size() << std::endl;
+    
+    // 转换网格索引为坐标点
+    std::vector<cv::Point2f> points1, points2;
+    points1.reserve(match_results.size());
+    points2.reserve(match_results.size());
+    
+    for (const auto& match : match_results) {
+        // 将网格索引转换为图像坐标
+        int row1 = match.grid1 / num_cols1;
+        int col1 = match.grid1 % num_cols1;
+        int row2 = match.grid2 / num_cols2;
+        int col2 = match.grid2 % num_cols2;
+        
+        // 计算网格中心点坐标
+        float x1 = col1 * grid_size1.width + grid_size1.width * 0.5f;
+        float y1 = row1 * grid_size1.height + grid_size1.height * 0.5f;
+        float x2 = col2 * grid_size2.width + grid_size2.width * 0.5f;
+        float y2 = row2 * grid_size2.height + grid_size2.height * 0.5f;
+        
+        points1.emplace_back(x1, y1);
+        points2.emplace_back(x2, y2);
+    }
+    
+    // 使用OpenCV的RANSAC算法进行单应性矩阵估计
+    std::vector<uchar> inliers_mask;
+    cv::Mat homography;
+    
+    try {
+        homography = cv::findHomography(points1, points2, cv::RANSAC, 
+                                       ransac_threshold, inliers_mask, max_iterations);
+        
+        if (homography.empty()) {
+            std::cout << "无法计算单应性矩阵，返回原始匹配结果" << std::endl;
+            return match_results;
+        }
+    } catch (const cv::Exception& e) {
+        std::cout << "RANSAC计算异常: " << e.what() << "，返回原始匹配结果" << std::endl;
+        return match_results;
+    }
+    
+    // 统计内点数量
+    int inlier_count = cv::sum(inliers_mask)[0];
+    float inlier_ratio = static_cast<float>(inlier_count) / match_results.size();
+    
+    std::cout << "RANSAC内点数: " << inlier_count 
+              << "，内点比例: " << inlier_ratio 
+              << "，阈值: " << min_inlier_ratio << std::endl;
+    
+    // 检查内点比例是否满足要求
+    if (inlier_ratio < min_inlier_ratio) {
+        std::cout << "内点比例过低，返回原始匹配结果" << std::endl;
+        return match_results;
+    }
+    
+    // 筛选内点匹配结果
+    std::vector<MatchTriplet> filtered_results;
+    filtered_results.reserve(inlier_count);
+    
+    for (size_t i = 0; i < match_results.size(); ++i) {
+        if (inliers_mask[i]) {
+            filtered_results.push_back(match_results[i]);
+        }
+    }
+    
+    std::cout << "RANSAC筛选完成，保留匹配数: " << filtered_results.size() << std::endl;
+    return filtered_results;
+}
+
 } // namespace VideoMatcher 

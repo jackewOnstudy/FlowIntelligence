@@ -1,13 +1,19 @@
 *.mp4
 *.txt
 *.pyc
+*.log
+*.sh
+LICENSE
 /build
+/build_enhanced
+/cmake
+/docs
 /Output
 /TEST_OUTPUT
 /first_frame
 /outputTest
 /Datasets
 /scripts
-/examples
-/docs
+/tests
+/output_videos
 

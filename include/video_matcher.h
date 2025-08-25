@@ -263,6 +263,13 @@ public:
     static std::vector<cv::Mat> batchLoadNpyFiles(const std::vector<std::string>& video_paths,
                                                   const std::vector<cv::Size>& grid_sizes,
                                                   const std::string& output_path);
+    
+    // RANSAC筛选算法 - 新增功能
+    static std::vector<MatchTriplet> ransacFilterMatchResults(const std::vector<MatchTriplet>& match_results,
+                                                             const cv::Size& grid_size1, const cv::Size& grid_size2,
+                                                             int num_cols1, int num_rows1, int num_cols2, int num_rows2,
+                                                             bool shifting_flag, float ransac_threshold = 5.0f,
+                                                             int max_iterations = 1000, float min_inlier_ratio = 0.5f);
 };
 
 // 主要的视频匹配器类 - 对应Python的cal_overlap_grid函数

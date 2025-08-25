@@ -1,6 +1,11 @@
 export OMP_NUM_THREADS=32
-taskset -c 0-31 ./build/FlowIntelligence \
-  --video1 OTCBVS1L.mp4 --video2 OTCBVS1R.mp4 \
+taskset -c 0-31 ./build_enhanced/FlowIntelligence \
+  --dataset_path /mnt/mDisk2/CityData/au_video/video \
+  --video1 63554_PAINT_R.mp4 --video2 63554_PAINT.mp4 \
   --output-path ./outputTest \
   --max-frames 3000 \
-  # --use-otsu-t1 --use-otsu-t2 --global-otsu \
+  --use-otsu-t1 --use-otsu-t2 --global-otsu \
+  --csv-log ./outputTest/log.csv \
+  --stride 4 4 \  
+  # --dataset_path /home/jackew/Project/FlowIntelligence/Datasets \
+  # --video1 T10L.mp4 --video2 T10R.mp4 \
