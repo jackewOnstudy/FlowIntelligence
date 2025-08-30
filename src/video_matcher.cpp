@@ -333,12 +333,12 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
             stride2.height /= 2;
         }
         
-        VideoMatcherUtils::matchResultView(video_path1, match_result, temp_grid_size, stride1, 
-                                          parameters_.match_result_view_path, 1);
-        VideoMatcherUtils::matchResultView(video_path2, match_result, temp_grid_size2, stride2, 
-                                          parameters_.match_result_view_path, 2);
+        // 使用新的拼接函数替代分别保存两个图片
+        VideoMatcherUtils::combinedMatchResultView(video_path1, video_path2, match_result, 
+                                                  temp_grid_size, temp_grid_size2, stride1, stride2,
+                                                  parameters_.match_result_view_path);
         
-        // 保存每次迭代的匹配结果 - 新增功能
+        // 保存每次迭代的匹配结果 
         VideoMatcherUtils::saveMatchResultList(video_path1, match_result, temp_grid_size, 
                                               parameters_.match_result_path);
         

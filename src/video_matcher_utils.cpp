@@ -557,8 +557,8 @@ std::vector<MatchTriplet> VideoMatcherUtils::loadMatchResultList(const std::stri
 void VideoMatcherUtils::matchResultView(const std::string& path, const std::vector<MatchTriplet>& match_result,
                                        const cv::Size& grid_size, const cv::Size& stride, 
                                        const std::string& output_path, int which_video) {
-    // 对应Python的match_result_view函数 - 优化版本
-    if (match_result.empty()) return;  // 早期返回优化
+    // 对应Python的match_result_view函数
+    if (match_result.empty()) return;  
     
     std::filesystem::path video_path(path);
     std::string folder = video_path.parent_path().string();
@@ -609,6 +609,117 @@ void VideoMatcherUtils::matchResultView(const std::string& path, const std::vect
     
     cv::imwrite(output_file, frame);
     std::cout << "Save the match result to " << output_file << std::endl;
+}
+
+void VideoMatcherUtils::combinedMatchResultView(const std::string& video_path1, const std::string& video_path2,
+                                               const std::vector<MatchTriplet>& match_result,
+                                               const cv::Size& grid_size1, const cv::Size& grid_size2,
+                                               const cv::Size& stride1, const cv::Size& stride2,
+                                               const std::string& output_path) {
+    // 拼接两个匹配结果图片并保存
+    if (match_result.empty()) return;
+    
+    // 获取视频文件名（不含扩展名）
+    std::filesystem::path video_path1_obj(video_path1);
+    std::filesystem::path video_path2_obj(video_path2);
+    std::string file1 = video_path1_obj.stem().string();
+    std::string file2 = video_path2_obj.stem().string();
+    
+    // 构建图片路径
+    std::string folder1 = video_path1_obj.parent_path().string();
+    std::string folder2 = video_path2_obj.parent_path().string();
+    std::string first_frame_dir1 = folder1 + "/first_frame";
+    std::string first_frame_dir2 = folder2 + "/first_frame";
+    std::string frame_path1 = first_frame_dir1 + "/" + file1 + ".jpg";
+    std::string frame_path2 = first_frame_dir2 + "/" + file2 + ".jpg";
+    
+    // 读取两个视频的第一帧
+    cv::Mat frame1 = cv::imread(frame_path1);
+    cv::Mat frame2 = cv::imread(frame_path2);
+    
+    if (frame1.empty() || frame2.empty()) {
+        std::cerr << "Error: Could not open frames: " << frame_path1 << " or " << frame_path2 << std::endl;
+        return;
+    }
+    
+    // 复制图片以便在其上绘制匹配结果
+    cv::Mat result_frame1 = frame1.clone();
+    cv::Mat result_frame2 = frame2.clone();
+    
+    // 为第一个视频绘制匹配结果（红色）
+    int frame_w1 = result_frame1.cols;
+    int frame_h1 = result_frame1.rows;
+    int stride_w1 = stride1.width, stride_h1 = stride1.height;
+    int grid_w1 = grid_size1.width, grid_h1 = grid_size1.height;
+    int num_cols1 = (frame_w1 - grid_w1) / stride_w1 + 1;
+    
+    float point = 0.5f;
+    cv::Scalar color1(0, 0, 255); // 红色
+    
+    for (const auto& match : match_result) {
+        int index = match.grid1;
+        int i = index / num_cols1;
+        int j = index % num_cols1;
+        int grid_x = j * stride_w1;
+        int grid_y = i * stride_h1;
+        
+        if (grid_x + grid_w1 <= frame_w1 && grid_y + grid_h1 <= frame_h1) {
+            cv::Mat roi = result_frame1(cv::Rect(grid_x, grid_y, grid_w1, grid_h1));
+            cv::Mat color_mask = cv::Mat::ones(roi.size(), roi.type());
+            color_mask.setTo(color1);
+            cv::addWeighted(roi, 1.0f - point, color_mask, point, 0, roi);
+        }
+    }
+    
+    // 为第二个视频绘制匹配结果（绿色）
+    int frame_w2 = result_frame2.cols;
+    int frame_h2 = result_frame2.rows;
+    int stride_w2 = stride2.width, stride_h2 = stride2.height;
+    int grid_w2 = grid_size2.width, grid_h2 = grid_size2.height;
+    int num_cols2 = (frame_w2 - grid_w2) / stride_w2 + 1;
+    
+    cv::Scalar color2(0, 255, 0); // 绿色
+    
+    for (const auto& match : match_result) {
+        int index = match.grid2;
+        int i = index / num_cols2;
+        int j = index % num_cols2;
+        int grid_x = j * stride_w2;
+        int grid_y = i * stride_h2;
+        
+        if (grid_x + grid_w2 <= frame_w2 && grid_y + grid_h2 <= frame_h2) {
+            cv::Mat roi = result_frame2(cv::Rect(grid_x, grid_y, grid_w2, grid_h2));
+            cv::Mat color_mask = cv::Mat::ones(roi.size(), roi.type());
+            color_mask.setTo(color2);
+            cv::addWeighted(roi, 1.0f - point, color_mask, point, 0, roi);
+        }
+    }
+    
+    // 确保两个图片高度一致（取较小的高度）
+    int target_height = std::min(result_frame1.rows, result_frame2.rows);
+    if (result_frame1.rows != target_height) {
+        cv::resize(result_frame1, result_frame1, cv::Size(result_frame1.cols * target_height / result_frame1.rows, target_height));
+    }
+    if (result_frame2.rows != target_height) {
+        cv::resize(result_frame2, result_frame2, cv::Size(result_frame2.cols * target_height / result_frame2.rows, target_height));
+    }
+    
+    // 左右拼接两个图片
+    cv::Mat combined_image;
+    cv::hconcat(result_frame1, result_frame2, combined_image);
+    
+    // 构建保存路径：parameters_.match_result_view_path/file1_file2/gridsize.jpg
+    std::string output_folder = output_path + "/" + file1 + "_" + file2;
+    std::filesystem::create_directories(output_folder);
+    std::string grid_size_str = std::to_string(grid_size1.width) + "x" + std::to_string(grid_size1.height);
+    std::string output_file = output_folder + "/" + grid_size_str + ".jpg";
+    
+    bool success = cv::imwrite(output_file, combined_image);
+    if (success) {
+        std::cout << "Combined match result saved to " << output_file << std::endl;
+    } else {
+        std::cerr << "Error: Failed to save combined match result to " << output_file << std::endl;
+    }
 }
 
 std::set<int> VideoMatcherUtils::getSmallIndexInLarge(int K, int num_large_grids_per_row, int num_small_grids_per_row,

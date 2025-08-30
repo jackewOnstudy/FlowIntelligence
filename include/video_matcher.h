@@ -245,6 +245,13 @@ public:
                                const cv::Size& grid_size, const cv::Size& stride, 
                                const std::string& output_path, int which_video);
     
+    // 拼接两个匹配结果图片并保存
+    static void combinedMatchResultView(const std::string& video_path1, const std::string& video_path2,
+                                      const std::vector<MatchTriplet>& match_result,
+                                      const cv::Size& grid_size1, const cv::Size& grid_size2,
+                                      const cv::Size& stride1, const cv::Size& stride2,
+                                      const std::string& output_path);
+    
     // 小网格索引计算
     static std::map<int, std::set<int>> getSmallGridIndex(const std::vector<MatchTriplet>& match_result,
                                                          const cv::Size& image_size, const cv::Size& small_grid_size,
