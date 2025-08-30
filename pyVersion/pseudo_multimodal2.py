@@ -4,6 +4,39 @@ import os
 import argparse
 import sys
 
+def generate_output_filename(input_path, variant_name, output_dir):
+    """
+    根据输入文件名和模态名称生成输出文件名
+    
+    Args:
+        input_path: 输入视频文件路径，如 "./Datasets/T10L.mp4"
+        variant_name: 模态名称，如 "motion_gradient"
+        output_dir: 输出目录
+    
+    Returns:
+        完整的输出文件路径，如 "./outputTest/T10L_motion_gradient.mp4"
+    """
+    # 获取输入文件的基础名称（不包含路径和扩展名）
+    input_basename = os.path.splitext(os.path.basename(input_path))[0]
+    
+    # 映射模态名称到简短的后缀
+    variant_suffixes = {
+        "motion": "motion_gradient",
+        "edge": "edge_map", 
+        "phase": "phase_only",
+        "posterize": "posterize_nonlinear",
+        "phase_enhanced": "phase_enhanced"
+    }
+    
+    # 获取对应的后缀，如果没有映射则使用原名称
+    suffix = variant_suffixes.get(variant_name, variant_name)
+    
+    # 生成输出文件名
+    output_filename = f"{input_basename}_{suffix}.mp4"
+    output_path = os.path.join(output_dir, output_filename)
+    
+    return output_path
+
 def generate_motion_gradient_frame(gray, prev_gray, prev_prev_gray):
     """
     通过三帧差分法生成运动梯度帧。
@@ -124,14 +157,13 @@ def generate_posterize_nonlinear_frame(frame):
     
     return np.uint8(nonlinear)
 
-def main(input_path):
+def main(input_path, output_dir="./outputTest/2"):
     # 检查输入文件是否存在
     if not os.path.exists(input_path):
         print(f"错误: 输入视频文件未找到 '{input_path}'")
         sys.exit(1)
 
     # 创建输出目录
-    output_dir = "./output_videos"
     os.makedirs(output_dir, exist_ok=True)
     print(f"输出将保存到 '{output_dir}/' 目录中...")
 
@@ -150,14 +182,12 @@ def main(input_path):
     # 定义视频编码器和创建VideoWriter对象
     fourcc = cv2.VideoWriter_fourcc(*'mp4v') # 使用'mp4v'编码器以获得良好的兼容性
     
-    # 定义输出文件路径
-    out_paths = {
-        'motion': os.path.join(output_dir, 'output_motion_gradient.mp4'),
-        'edge': os.path.join(output_dir, 'output_edge_map.mp4'),
-        'phase': os.path.join(output_dir, 'output_phase_only.mp4'),
-        'posterize': os.path.join(output_dir, 'output_posterize_nonlinear.mp4'),
-        'phase_enhanced': os.path.join(output_dir, 'output_phase_only_enhanced.mp4')
-    }
+    # 定义输出文件路径 - 使用新的命名逻辑
+    variants = ['motion', 'edge', 'phase', 'posterize', 'phase_enhanced']
+    out_paths = {}
+    for variant in variants:
+        out_paths[variant] = generate_output_filename(input_path, variant, output_dir)
+        print(f"[INFO] Output file for {variant}: {out_paths[variant]}")
 
     # 创建VideoWriter对象
     # 注意：即使处理结果是单通道灰度图，也需要转换为3通道BGR格式才能写入视频
@@ -232,6 +262,11 @@ if __name__ == '__main__':
         "input_video", 
         help="输入视频文件的路径。"
     )
+    parser.add_argument(
+        "--output_dir", "-o",
+        default="./outputTest/2",
+        help="输出目录，默认为 './outputTest/2'"
+    )
     args = parser.parse_args()
     
-    main(args.input_video)
+    main(args.input_video, args.output_dir)

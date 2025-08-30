@@ -31,6 +31,39 @@ def to_gray_float(frame):
     g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
     return g
 
+def generate_output_filename(input_path, variant_name, output_dir):
+    """
+    根据输入文件名和模态名称生成输出文件名
+    
+    Args:
+        input_path: 输入视频文件路径，如 "./Datasets/T10L.mp4"
+        variant_name: 模态名称，如 "motion_thermal"
+        output_dir: 输出目录
+    
+    Returns:
+        完整的输出文件路径，如 "./outputTest/T10L_motion_thermal.mp4"
+    """
+    # 获取输入文件的基础名称（不包含路径和扩展名）
+    input_basename = os.path.splitext(os.path.basename(input_path))[0]
+    
+    # 映射模态名称到简短的后缀
+    variant_suffixes = {
+        "motion_thermal": "motion_thermal",
+        "event": "event",
+        "flow_color": "flow_color",
+        "blur_posterize": "blur_posterize",
+        "edge": "edge"
+    }
+    
+    # 获取对应的后缀，如果没有映射则使用原名称
+    suffix = variant_suffixes.get(variant_name, variant_name)
+    
+    # 生成输出文件名
+    output_filename = f"{input_basename}_{suffix}.mp4"
+    output_path = os.path.join(output_dir, output_filename)
+    
+    return output_path
+
 def write_video(frames, out_path, fps):
     """frames: list of BGR uint8 frames"""
     if len(frames) == 0:
@@ -150,7 +183,7 @@ def process_video(input_path, output_dir,
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writers = {}
     for v in variants:
-        out_path = os.path.join(output_dir, f"{v}.mp4")
+        out_path = generate_output_filename(input_path, v, output_dir)
         writers[v] = cv2.VideoWriter(out_path, fourcc, fps, (w, h))
         if not writers[v].isOpened():
             raise IOError(f"Cannot open writer for {out_path}")
@@ -164,7 +197,7 @@ def process_video(input_path, output_dir,
 
     # 写第一帧（或空帧）
     for v in variants:
-        if v == "flow_color":
+        if v == "flow_color" or v == "event":
             writers[v].write(np.zeros_like(prev))  # 黑帧
         else:
             writers[v].write(prev.copy())
@@ -227,7 +260,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     if args.variants.strip().lower() == "all":
-        vars_list = ("motion_thermal", "event", "flow_color", "blur_posterize", "edge")
+        vars_list = ("event", "flow_color", "blur_posterize", "edge")  # "motion_thermal",
     else:
         vars_list = tuple([v.strip() for v in args.variants.split(",") if v.strip() != ""])
 

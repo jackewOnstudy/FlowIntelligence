@@ -70,6 +70,35 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
     std::string video_path1 = parameters_.dataset_path + "/" + parameters_.video_name1;
     std::string video_path2 = parameters_.dataset_path + "/" + parameters_.video_name2;
     
+    // 自动获取视频尺寸，而不是使用parameters传递
+    cv::Size video_size1, video_size2;
+    {
+        cv::VideoCapture cap1(video_path1);
+        cv::VideoCapture cap2(video_path2);
+        
+        if (!cap1.isOpened()) {
+            throw std::runtime_error("Error: Could not open video: " + video_path1);
+        }
+        if (!cap2.isOpened()) {
+            throw std::runtime_error("Error: Could not open video: " + video_path2);
+        }
+        
+        video_size1 = cv::Size(
+            static_cast<int>(cap1.get(cv::CAP_PROP_FRAME_WIDTH)),
+            static_cast<int>(cap1.get(cv::CAP_PROP_FRAME_HEIGHT))
+        );
+        video_size2 = cv::Size(
+            static_cast<int>(cap2.get(cv::CAP_PROP_FRAME_WIDTH)),
+            static_cast<int>(cap2.get(cv::CAP_PROP_FRAME_HEIGHT))
+        );
+        
+        cap1.release();
+        cap2.release();
+        
+        std::cout << "自动获取视频尺寸 - Video1: " << video_size1.width << "x" << video_size1.height 
+                  << ", Video2: " << video_size2.width << "x" << video_size2.height << std::endl;
+    }
+    
     cv::Size grid_size = parameters_.grid_size;
     cv::Size grid_size2 = parameters_.grid_size2;
     cv::Size i_stride1 = parameters_.stride;
@@ -334,7 +363,7 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
         
         std::cout << "Calculate small grid index..." << std::endl;
         sorted_large_grid_corre_small_dict = VideoMatcherUtils::getSmallGridIndex(
-            match_result, parameters_.video_size2, small_grid_size2, temp_grid_size2, shifting_flag, 2);
+            match_result, video_size2, small_grid_size2, temp_grid_size2, shifting_flag, 2);
         
         temp_grid_size = small_grid_size;
         temp_grid_size2 = small_grid_size2;

@@ -62,8 +62,8 @@ struct Parameters {
         video_name2 = "T10R.mp4";
         // video_size1 = cv::Size(1920, 1080);
         // video_size2 = cv::Size(1920, 1080);
-        video_size1 = cv::Size(960, 540);
-        video_size2 = cv::Size(960, 540);
+        // video_size1 = cv::Size(960, 540);
+        // video_size2 = cv::Size(960, 540);
         
         motion_threshold1 = {24, 80, 160, 200};
         motion_threshold2 = {24, 80, 160, 200};
