@@ -314,7 +314,10 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
         match_result = VideoMatcherUtils::ransacFilterMatchResults(match_result, 
                                                                   temp_grid_size, temp_grid_size2,
                                                                   num_cols1, num_rows1, num_cols2, num_rows2,
-                                                                  shifting_flag);
+                                                                  shifting_flag,
+                                                                  parameters_.ransac_threshold,
+                                                                  parameters_.ransac_max_iterations,
+                                                                  parameters_.ransac_min_inlier_ratio);
         
         // 打印前16个匹配结果
         std::cout << "前16个匹配结果:" << std::endl;

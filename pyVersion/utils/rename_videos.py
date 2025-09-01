@@ -55,7 +55,7 @@ def rename_videos(folder_path):
     for i, old_file in enumerate(video_files, 1):
         # 保持原扩展名
         extension = old_file.suffix
-        new_name = f"K{i}{extension}"
+        new_name = f"A{i}{extension}"
         new_path = old_file.parent / new_name
         
         try:

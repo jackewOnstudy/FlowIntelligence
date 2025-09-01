@@ -55,6 +55,11 @@ struct Parameters {
     float time_alignment_similarity_threshold;  // 相似性阈值
     int time_alignment_min_regions;    // 最少可靠区域对数
     
+    // RANSAC筛选参数
+    float ransac_threshold;            // RANSAC像素误差阈值
+    int ransac_max_iterations;         // RANSAC最大迭代次数
+    float ransac_min_inlier_ratio;     // RANSAC最小内点比例
+    
     // 默认构造函数
     Parameters() {
         // 初始化默认参数 - 对应Python中的param_T0_B201
@@ -102,6 +107,11 @@ struct Parameters {
         time_alignment_region_size = 4;  // 4x4=16个区域
         time_alignment_similarity_threshold = 0.6f;  // 相似性阈值
         time_alignment_min_regions = 3;  // 至少3个可靠区域
+        
+        // RANSAC参数默认值
+        ransac_threshold = 5.0f;         // 像素误差阈值
+        ransac_max_iterations = 1000;    // 最大迭代次数
+        ransac_min_inlier_ratio = 0.5f;  // 最小内点比例
     }
 };
 

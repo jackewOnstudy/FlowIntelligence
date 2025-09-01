@@ -18,11 +18,12 @@ void VideoMatcherUtils::saveNpyFiles(const std::string& video_path, const cv::Ma
     // 对应Python的save_npy_files函数
     std::filesystem::path path(video_path);
     std::string file_name = path.stem().string();
-    std::string file_folder = file_name.substr(0, file_name.length() - 1);
-    std::string side = file_name.substr(file_name.length() - 1);
+    // std::string file_folder = file_name.substr(0, file_name.length() - 1);
+    // std::string side = file_name.substr(file_name.length() - 1);
     
-    std::string f_grid = std::to_string(grid_size.width) + "x" + std::to_string(grid_size.height);
-    std::string output_folder = output_path + "/" + file_folder + "/" + side + "/";
+    // std::string f_grid = std::to_string(grid_size.width) + "x" + std::to_string(grid_size.height);
+    // std::string output_folder = output_path + "/" + file_folder + "/" + side + "/";
+    std::string output_folder = output_path + "/" + file_name + "/";
     
     std::filesystem::create_directories(output_folder);
     std::string output_file = output_folder + f_grid + ".xml";
@@ -39,11 +40,12 @@ cv::Mat VideoMatcherUtils::loadNpyFiles(const std::string& video_path, const cv:
     // 对应Python的load_npy_files函数
     std::filesystem::path path(video_path);
     std::string file_name = path.stem().string();
-    std::string file_folder = file_name.substr(0, file_name.length() - 1);
-    std::string side = file_name.substr(file_name.length() - 1);
+    // std::string file_folder = file_name.substr(0, file_name.length() - 1);
+    // std::string side = file_name.substr(file_name.length() - 1);
     
-    std::string f_grid = std::to_string(grid_size.width) + "x" + std::to_string(grid_size.height);
-    std::string load_file = output_path + "/" + file_folder + "/" + side + "/" + f_grid + ".xml";
+    // std::string f_grid = std::to_string(grid_size.width) + "x" + std::to_string(grid_size.height);
+    // std::string load_file = output_path + "/" + file_folder + "/" + side + "/" + f_grid + ".xml";
+    std::string load_file = output_path + "/" + file_name + "/" + f_grid + ".xml";
     
     cv::Mat motion_data;
     cv::FileStorage fs(load_file, cv::FileStorage::READ);
@@ -494,9 +496,10 @@ void VideoMatcherUtils::saveMatchResultList(const std::string& video_path, const
     // 对应Python的save_match_result_list函数
     std::filesystem::path video_path_obj(video_path);
     std::string file_name = video_path_obj.stem().string();
-    std::string file_folder = file_name.substr(0, file_name.length() - 1);
+    // std::string file_folder = file_name.substr(0, file_name.length() - 1);
     
-    std::string output_folder = output_path + "/" + file_folder;
+    // std::string output_folder = output_path + "/" + file_folder;
+    std::string output_folder = output_path + "/" + file_name;
     std::filesystem::create_directories(output_folder);
     
     std::string f_grid = std::to_string(grid_size.width) + "x" + std::to_string(grid_size.height);
@@ -625,22 +628,32 @@ void VideoMatcherUtils::combinedMatchResultView(const std::string& video_path1, 
     std::string file1 = video_path1_obj.stem().string();
     std::string file2 = video_path2_obj.stem().string();
     
-    // 构建图片路径
-    std::string folder1 = video_path1_obj.parent_path().string();
-    std::string folder2 = video_path2_obj.parent_path().string();
-    std::string first_frame_dir1 = folder1 + "/first_frame";
-    std::string first_frame_dir2 = folder2 + "/first_frame";
-    std::string frame_path1 = first_frame_dir1 + "/" + file1 + ".jpg";
-    std::string frame_path2 = first_frame_dir2 + "/" + file2 + ".jpg";
+    // 直接从视频读取第二帧
+    cv::VideoCapture cap1(video_path1);
+    cv::VideoCapture cap2(video_path2);
     
-    // 读取两个视频的第一帧
-    cv::Mat frame1 = cv::imread(frame_path1);
-    cv::Mat frame2 = cv::imread(frame_path2);
-    
-    if (frame1.empty() || frame2.empty()) {
-        std::cerr << "Error: Could not open frames: " << frame_path1 << " or " << frame_path2 << std::endl;
+    if (!cap1.isOpened() || !cap2.isOpened()) {
+        std::cerr << "Error: Could not open videos: " << video_path1 << " or " << video_path2 << std::endl;
         return;
     }
+    
+    // 读取第二帧（跳过第一帧）
+    cv::Mat frame1, frame2;
+    cap1 >> frame1;  // 读取第一帧但不使用
+    cap1 >> frame1;  // 读取第二帧
+    cap2 >> frame2;  // 读取第一帧但不使用
+    cap2 >> frame2;  // 读取第二帧
+    
+    if (frame1.empty() || frame2.empty()) {
+        std::cerr << "Error: Could not read second frame from videos" << std::endl;
+        cap1.release();
+        cap2.release();
+        return;
+    }
+    
+    // 释放视频捕获器
+    cap1.release();
+    cap2.release();
     
     // 复制图片以便在其上绘制匹配结果
     cv::Mat result_frame1 = frame1.clone();

@@ -123,8 +123,20 @@ def process_folder(input_dir, output_dir):
                 processed_4k += 1
                 print(f"  需要resize到: {target_width}x{target_height}")
                 
-            elif width == 2160 and height == 3840:
+            elif width == 2160 and (height == 3840 or height == 3804):
                 # 9:16竖屏 -> 1080x1920
+                target_width, target_height = 1080, 1920
+                processed_9_16 += 1
+                print(f"  需要resize到: {target_width}x{target_height}")
+
+            elif width == 2560 and height == 1440:
+                # 2K横屏 -> 1080p横屏
+                target_width, target_height = 1920, 1080
+                processed_4k += 1
+                print(f"  需要resize到: {target_width}x{target_height}")
+
+            elif width == 1440 and height == 2560:
+                # 9:16竖屏 2K -> 1080x1920
                 target_width, target_height = 1080, 1920
                 processed_9_16 += 1
                 print(f"  需要resize到: {target_width}x{target_height}")

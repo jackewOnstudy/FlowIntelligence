@@ -3,6 +3,7 @@
 *.pyc
 *.log
 *.sh
+*.xlsx
 LICENSE
 /build
 /build_enhanced
@@ -15,5 +16,6 @@ LICENSE
 /Datasets
 /scripts
 /tests
-/output_videos
+/MultiModal_Output
+/results
 

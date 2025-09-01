@@ -4,7 +4,7 @@ taskset -c 0-31 ./build_enhanced/FlowIntelligence \
   --max-frames 3000 \
   --use-otsu-t1 --use-otsu-t2 --global-otsu \
   --csv-log ./outputTest/log.csv \
-  --dataset_path /home/jackew/Project/FlowIntelligence/Datasets \
+  --dataset-path /home/jackew/Project/FlowIntelligence/Datasets \
   --video1 T10L.mp4 --video2 T10R.mp4 \
   --stride 4 4 \  
   

@@ -29,7 +29,7 @@ void printUsage(const char* program_name) {
               << "  --stride <size>             步长 (默认: 8x8)\n"
               << "  --motion-threshold <val>    运动阈值 (默认: 100,200,400,800)\n"
               << "  --segment-length <len>      分段长度 (默认: 10)\n"
-              << "  --max-mismatches <count>    最大不匹配段数 (默认: 3)\n"
+              << "  --max-mismatches <count>    最大不匹配段数 (默认: 1)\n"
               << "  --propagate-step <step>     传播步长 (默认: 1)\n"
               << "  --max-frames <count>        最大处理帧数 (默认: 1000)\n"
               << "  --use-otsu-t1               在帧差分时使用Otsu阈值\n"
@@ -38,6 +38,9 @@ void printUsage(const char* program_name) {
               << "  --enable-time-alignment     启用时间对齐补偿\n"
               << "  --max-time-offset <frames>  最大时间偏移搜索范围 (默认: 30)\n"
               << "  --time-align-threshold <val> 时间对齐相似性阈值 (默认: 0.6)\n"
+              << "  --ransac-threshold <val>    RANSAC像素误差阈值 (默认: 5.0)\n"
+              << "  --ransac-max-iterations <count> RANSAC最大迭代次数 (默认: 1000)\n"
+              << "  --ransac-min-inlier-ratio <val> RANSAC最小内点比例 (默认: 0.5)\n"
               << "  --csv-log <path>            CSV日志文件路径\n"
               << "  -h, --help                  显示此帮助信息\n";
 }
@@ -55,7 +58,7 @@ Parameters parseArguments(int argc, char* argv[]) {
             params.video_name1 = argv[++i];
         } else if (arg == "--video2" && i + 1 < argc) {
             params.video_name2 = argv[++i];
-        } else if (arg == "--dataset_path" && i + 1 < argc) {
+        } else if (arg == "--dataset-path" && i + 1 < argc) {
             params.dataset_path = argv[++i];
         } else if (arg == "--output-path" && i + 1 < argc) {
             params.base_output_folder = argv[++i];
@@ -92,6 +95,12 @@ Parameters parseArguments(int argc, char* argv[]) {
             params.max_time_offset = std::stoi(argv[++i]);
         } else if (arg == "--time-align-threshold" && i + 1 < argc) {
             params.time_alignment_similarity_threshold = std::stof(argv[++i]);
+        } else if (arg == "--ransac-threshold" && i + 1 < argc) {
+            params.ransac_threshold = std::stof(argv[++i]);
+        } else if (arg == "--ransac-max-iterations" && i + 1 < argc) {
+            params.ransac_max_iterations = std::stoi(argv[++i]);
+        } else if (arg == "--ransac-min-inlier-ratio" && i + 1 < argc) {
+            params.ransac_min_inlier_ratio = std::stof(argv[++i]);
         } else if (arg == "--csv-log" && i + 1 < argc) {
             params.csv_log_file_path = argv[++i];
         }
@@ -131,6 +140,12 @@ int main(int argc, char* argv[]) {
             std::cout << "  最大时间偏移: " << params.max_time_offset << " 帧\n"
                       << "  相似性阈值: " << params.time_alignment_similarity_threshold << "\n";
         }
+        
+        std::cout << "  RANSAC参数:\n"
+                  << "    像素误差阈值: " << params.ransac_threshold << "\n"
+                  << "    最大迭代次数: " << params.ransac_max_iterations << "\n"
+                  << "    最小内点比例: " << params.ransac_min_inlier_ratio << "\n";
+        
         std::cout << "\n";
         
         // 创建视频匹配器
