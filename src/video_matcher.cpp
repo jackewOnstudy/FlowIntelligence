@@ -254,6 +254,8 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
             motion_status_per_grid1, motion_status_per_grid1.cols);
         auto motion_status_per_grid2_segments = SegmentMatcher::segmentMatrix(
             motion_status_per_grid2, motion_status_per_grid2.cols);
+
+        std::cout << "###############[DEBUG]###############" << "segmentMatrix Finished!" <<std::endl;
         
         std::vector<std::vector<MatchTriplet>> match_result_all; // 保存一个网格大小下所有匹配结果
         
@@ -262,13 +264,14 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
                 match_result = SegmentMatcher::findMatchingGridWithSegment(
                     motion_status_per_grid1_segments[idx], motion_status_per_grid2_segments[idx],
                     parameters_, sorted_large_grid_corre_small_dict, num_cols1, num_cols1 / 2, shifting_flag);
-                
+                std::cout << "###############[DEBUG]###############" << "findMatchingGridWithSegment Finished!" <<std::endl;
                 // 最大网格匹配，只保留前N个匹配结果
                 if (iterate_time == 0) {
                     size_t max_results = std::min(static_cast<size_t>(20), match_result.size());
                     match_result.resize(max_results);
                 }
-                
+                std::cout << "###############[DEBUG]###############" << "filter Finished!" <<std::endl;
+               
                 match_result = VideoMatcherUtils::processTriplets(match_result);
                 match_result_all.push_back(match_result);
                 
@@ -304,6 +307,7 @@ std::vector<std::vector<MatchTriplet>> VideoMatcherEngine::calOverlapGrid() {
                 
                 match_result = VideoMatcherUtils::processTriplets(match_result);
                 match_result_all.push_back(match_result);
+                std::cout << "###############[DEBUG]###############" << i << "th propagateMatchingResult Finished!" << std::endl;
             }
         }
         

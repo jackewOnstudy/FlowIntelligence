@@ -24,7 +24,8 @@ void VideoMatcherUtils::saveNpyFiles(const std::string& video_path, const cv::Ma
     // std::string f_grid = std::to_string(grid_size.width) + "x" + std::to_string(grid_size.height);
     // std::string output_folder = output_path + "/" + file_folder + "/" + side + "/";
     std::string output_folder = output_path + "/" + file_name + "/";
-    
+    std::string f_grid = std::to_string(grid_size.width) + "x" + std::to_string(grid_size.height);
+
     std::filesystem::create_directories(output_folder);
     std::string output_file = output_folder + f_grid + ".xml";
     
@@ -45,6 +46,7 @@ cv::Mat VideoMatcherUtils::loadNpyFiles(const std::string& video_path, const cv:
     
     // std::string f_grid = std::to_string(grid_size.width) + "x" + std::to_string(grid_size.height);
     // std::string load_file = output_path + "/" + file_folder + "/" + side + "/" + f_grid + ".xml";
+    std::string f_grid = std::to_string(grid_size.width) + "x" + std::to_string(grid_size.height);
     std::string load_file = output_path + "/" + file_name + "/" + f_grid + ".xml";
     
     cv::Mat motion_data;

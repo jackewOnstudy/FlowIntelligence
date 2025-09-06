@@ -5,7 +5,7 @@ taskset -c 0-31 ./build_enhanced/FlowIntelligence \
   --use-otsu-t1 --use-otsu-t2 --global-otsu \
   --csv-log ./outputTest/log.csv \
   --dataset-path /home/jackew/Project/FlowIntelligence/Datasets \
-  --video1 T10L.mp4 --video2 T10R.mp4 \
+  --video1 A6_motion_thermal.mp4 --video2 A6_temporal_gradient.mp4 \
   --stride 4 4 \  
   
 

@@ -7,10 +7,10 @@
 #include <mutex>
 #include <map>
 #include <set>
-#include <unordered_map>  // 新增：高效哈希映射
-#include <unordered_set>  // 新增：高效哈希集合
+#include <unordered_map>  
+#include <unordered_set>  
 #include "parameters.h"
-#include "time_alignment.h"  // 时间对齐模块
+#include "time_alignment.h" 
 
 namespace VideoMatcher {
 

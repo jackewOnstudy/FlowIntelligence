@@ -69,7 +69,6 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
     const Parameters& parameters, const std::map<int, std::set<int>>& sorted_large_grid_corre_small_dict,
     int small_grid_cols, int large_grid_cols, bool shifting_flag) {
     
-    // 对应Python的find_matching_grid_with_segment函数 - 优化版本
     int grid_num1 = motion_status_matrix1.rows;
     int grid_num2 = motion_status_matrix2.rows;
     int seq_len1 = motion_status_matrix1.cols;

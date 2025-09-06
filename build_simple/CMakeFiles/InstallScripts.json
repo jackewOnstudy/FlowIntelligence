@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/jackew/Project/FlowIntelligence/build_simple/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

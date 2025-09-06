@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# FlowIntelligence 增强版构建脚本
+# 包含所有新的优化组件
+
+set -e  # 遇到错误立即退出
+
+echo "🚀 开始构建 FlowIntelligence 增强版..."
+
+# 创建构建目录
+BUILD_DIR="build_enhanced"
+if [ -d "$BUILD_DIR" ]; then
+    echo "🧹 清理现有构建目录..."
+    rm -rf "$BUILD_DIR"
+fi
+
+mkdir -p "$BUILD_DIR"
+cd "$BUILD_DIR"
+
+echo "⚙️  配置 CMake..."
+
+# 检查是否有 CUDA 支持
+if command -v nvcc &> /dev/null; then
+    echo "✅ 检测到 CUDA，启用 GPU 加速"
+    CUDA_OPTION="-DENABLE_CUDA=ON"
+else
+    echo "⚠️  未检测到 CUDA，禁用 GPU 加速"
+    CUDA_OPTION="-DENABLE_CUDA=OFF"
+fi
+
+# 配置 CMake
+cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DENABLE_OPENMP=ON \
+    -DENABLE_SIMD=ON \
+    -DBUILD_EXAMPLES=ON \
+    -DBUILD_TESTS=ON \
+    $CUDA_OPTION
+
+echo "🔨 开始编译..."
+
+# 并行编译
+NPROC=$(nproc 2>/dev/null || echo 4)
+make -j$NPROC
+
+echo "🎯 构建完成!"
+
+# 显示构建结果
+echo ""
+echo "📋 构建结果:"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+if [ -f "FlowIntelligence" ]; then
+    echo "✅ FlowIntelligence (原版)"
+    ls -lh FlowIntelligence
+fi
+
+if [ -f "FlowIntelligenceEnhanced" ]; then
+    echo "✅ FlowIntelligenceEnhanced (增强版)"
+    ls -lh FlowIntelligenceEnhanced
+fi
+
+if [ -f "libFlowIntelligenceCore.a" ]; then
+    echo "✅ FlowIntelligenceCore (核心库)"
+    ls -lh libFlowIntelligenceCore.a
+fi
+
+# 检查测试程序
+if [ -f "UnitTests" ]; then
+    echo "✅ UnitTests (单元测试)"
+    ls -lh UnitTests
+fi
+
+if [ -f "IntegrationTests" ]; then
+    echo "✅ IntegrationTests (集成测试)"
+    ls -lh IntegrationTests
+fi
+
+echo ""
+echo "🚀 可以运行以下程序:"
+echo "  ./FlowIntelligence                  # 原版视频匹配"
+echo "  ./FlowIntelligenceEnhanced         # 增强版视频匹配"
+echo "  ./UnitTests                        # 运行单元测试"
+echo "  ./IntegrationTests                 # 运行集成测试"
+
+# 可选：运行快速测试
+echo ""
+read -p "是否运行集成测试验证构建结果? (y/N): " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "🧪 运行集成测试..."
+    if [ -f "IntegrationTests" ]; then
+        ./IntegrationTests
+    else
+        echo "❌ 集成测试程序未找到"
+    fi
+fi
+
+echo ""
+echo "🎉 FlowIntelligence 增强版构建完成!"
+echo "   位置: $(pwd)"
