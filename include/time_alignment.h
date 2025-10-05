@@ -10,12 +10,12 @@
 
 namespace VideoMatcher {
 
-// 局部区域特征结构
+
 struct LocalRegionFeature {
-    std::vector<float> activation_rate;     // 运动激活率序列
-    std::vector<float> change_rate;         // 运动变化率序列
-    std::vector<float> persistence;         // 运动持续性序列
-    float quality_score = 0.0f;            // 特征质量分数
+    std::vector<float> activation_rate;   
+    std::vector<float> change_rate;       
+    std::vector<float> persistence;         
+    float quality_score = 0.0f;            
     
     LocalRegionFeature() = default;
     explicit LocalRegionFeature(size_t seq_len) {
@@ -25,7 +25,6 @@ struct LocalRegionFeature {
     }
 };
 
-// 区域匹配对
 struct RegionMatchPair {
     int region1_id;
     int region2_id;
@@ -38,18 +37,17 @@ struct RegionMatchPair {
           confidence(conf), detected_offset(offset) {}
 };
 
-// 时间对齐结果
+
 struct TimeAlignmentResult {
-    int detected_offset = 0;           // 检测到的时间偏移量
-    float confidence = 0.0f;           // 检测置信度
-    int num_reliable_regions = 0;      // 可靠区域对数量
-    std::vector<RegionMatchPair> region_pairs;  // 区域匹配对详情
-    bool is_valid = false;             // 结果是否有效
+    int detected_offset = 0;           
+    float confidence = 0.0f;           
+    int num_reliable_regions = 0;      
+    std::vector<RegionMatchPair> region_pairs;  
+    bool is_valid = false;             
     
     TimeAlignmentResult() = default;
 };
 
-// 时间对齐参数
 struct TimeAlignmentParameters {
     bool enable_time_alignment = false;     // 是否启用时间对齐
     int max_time_offset = 30;               // 最大搜索偏移范围

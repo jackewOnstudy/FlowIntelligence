@@ -38,6 +38,7 @@ struct Parameters {
     int mismatch_distance_factor;
     int stage_length;
     int propagate_step;
+    int propagate_time;
     
     // 路径配置
     std::string dataset_path;
@@ -65,10 +66,6 @@ struct Parameters {
         // 初始化默认参数 - 对应Python中的param_T0_B201
         video_name1 = "T10L.mp4";
         video_name2 = "T10R.mp4";
-        // video_size1 = cv::Size(1920, 1080);
-        // video_size2 = cv::Size(1920, 1080);
-        // video_size1 = cv::Size(960, 540);
-        // video_size2 = cv::Size(960, 540);
         
         motion_threshold1 = {24, 80, 160, 200};
         motion_threshold2 = {24, 80, 160, 200};
@@ -93,6 +90,7 @@ struct Parameters {
         mismatch_distance_factor = 9;
         stage_length = 9000;
         propagate_step = 1;
+        propagate_time = 6;
         
         dataset_path = "/home/jackew/Project/FlowIntelligence/Datasets";
         base_output_folder = "./Output";

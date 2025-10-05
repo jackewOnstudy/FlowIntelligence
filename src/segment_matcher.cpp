@@ -1,21 +1,20 @@
 #include "video_matcher.h"
 #include <algorithm>
 #include <set>
-#include <unordered_set>  // 新增：高效集合操作
-#include <unordered_map>  // 新增：高效映射操作
+#include <unordered_set>  
+#include <unordered_map> 
 #include <iostream>
 #include <chrono>
 #include <fstream>
-#include <mutex>  // 新增：互斥锁支持
+#include <mutex>  
 #include <iomanip>
 #include <sstream>
 #ifdef _OPENMP
-#include <omp.h>  // 新增：OpenMP支持
+#include <omp.h>  
 #endif
 
 namespace VideoMatcher {
-
-// 获取当前时间戳的辅助函数  
+ 
 static std::string getCurrentTimestamp() {
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
@@ -29,14 +28,13 @@ static std::string getCurrentTimestamp() {
 }
 
 std::vector<std::vector<bool>> SegmentMatcher::segmentSequence(const std::vector<bool>& sequence, int segment_length) {
-    // 对应Python的segment_sequence函数 - 优化版本
     if (sequence.empty() || segment_length <= 0) {
         return {};
     }
     
     std::vector<std::vector<bool>> segments;
     size_t num_segments = (sequence.size() + segment_length - 1) / segment_length;
-    segments.reserve(num_segments);  // 预分配内存
+    segments.reserve(num_segments);  
     
     for (size_t i = 0; i < sequence.size(); i += segment_length) {
         size_t end = std::min(i + segment_length, sequence.size());
@@ -47,14 +45,13 @@ std::vector<std::vector<bool>> SegmentMatcher::segmentSequence(const std::vector
 }
 
 std::vector<cv::Mat> SegmentMatcher::segmentMatrix(const cv::Mat& matrix, int segment_length) {
-    // 对应Python的segment_matrix函数 - 优化版本
     if (matrix.empty() || segment_length <= 0) {
         return {};
     }
     
     std::vector<cv::Mat> segments;
     size_t num_segments = (matrix.cols + segment_length - 1) / segment_length;
-    segments.reserve(num_segments);  // 预分配内存
+    segments.reserve(num_segments); 
     
     for (int i = 0; i < matrix.cols; i += segment_length) {
         int end = std::min(i + segment_length, matrix.cols);
@@ -85,16 +82,13 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
     int mismatch_distance_factor = parameters.mismatch_distance_factor;
     
     std::vector<int> grid_list_v1;
-    std::vector<std::unordered_set<int>> candidates(grid_num1);  // 使用unordered_set优化查找
+    std::vector<std::unordered_set<int>> candidates(grid_num1); 
     
     auto start_time = std::chrono::high_resolution_clock::now();
     
-    // 初始化候选集合
     if (sorted_large_grid_corre_small_dict.empty()) {
-        // 第一次匹配，根据运动元素数量筛选 - 并行化优化
         int one_threshold = seq_len1 / select_grid_factor;
         
-        // 预计算运动计数 - 新增优化
         std::vector<int> motion_counts1(grid_num1), motion_counts2(grid_num2);
         
         #pragma omp parallel for schedule(static) if(grid_num1 > 100)
@@ -119,12 +113,10 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
             motion_counts2[i] = motion_count;
         }
         
-        // 构建候选列表
         for (int i = 0; i < grid_num1; ++i) {
             if (motion_counts1[i] >= one_threshold) {
                 grid_list_v1.push_back(i);
                 
-                // 为该网格找候选匹配网格
                 std::unordered_set<int> valid_candidates;
                 for (int j = 0; j < grid_num2; ++j) {
                     if (motion_counts2[j] >= one_threshold) {
@@ -135,11 +127,9 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
             }
         }
     } else {
-        // 基于上一层级的匹配结果 - 优化版本
         max_mismatches = std::max(1, max_mismatches - 1);
         mismatch_distance_factor = std::max(2, mismatch_distance_factor - 2);
         
-        // 预计算运动计数以避免重复计算
         std::vector<int> motion_counts1(grid_num1), motion_counts2(grid_num2);
         
         #pragma omp parallel for schedule(static) if(grid_num1 > 100)
@@ -168,17 +158,14 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
             int key = pair.first;
             const std::set<int>& v2_small_grid_set = pair.second;
             
-            // 计算v1对应的小网格集合
             std::set<int> v1_small_grid_set = VideoMatcherUtils::getSmallIndexInLarge(
                 key, large_grid_cols, small_grid_cols, 2, 2, shifting_flag);
             
-            // 过滤掉没有运动的网格
             std::vector<int> valid_v1_grids;
             for (int grid_idx : v1_small_grid_set) {
                 if (grid_idx < grid_num1 && motion_counts1[grid_idx] > 0) {
                     valid_v1_grids.push_back(grid_idx);
                     
-                    // 为该网格设置候选
                     std::unordered_set<int> valid_candidates;
                     for (int j : v2_small_grid_set) {
                         if (j < grid_num2 && motion_counts2[j] > 0) {
@@ -193,15 +180,12 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
         }
     }
     
-    // 初始化不匹配段次数 - 使用稀疏矩阵优化
     std::unordered_map<int, std::unordered_map<int, int>> mismatch_counts;
     
-    // 预分配分段数据 - 新增优化
     std::vector<std::vector<std::vector<bool>>> segments1, segments2;
     segments1.resize(grid_num1);
     segments2.resize(grid_num2);
     
-    // 并行化分段预处理
     #pragma omp parallel for schedule(dynamic) if(grid_num1 > 50)
     for (int i = 0; i < grid_num1; ++i) {
         if (std::find(grid_list_v1.begin(), grid_list_v1.end(), i) != grid_list_v1.end()) {
@@ -228,9 +212,7 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
     std::set<float> threshold_check_set;
     float threshold = 0.0f;
     
-    // 分段匹配处理 - 优化版本
     for (int segment_index = 0; segment_index < num_segments; ++segment_index) {
-        // 使用OpenMP并行化外层循环
         #pragma omp parallel for schedule(dynamic) if(grid_list_v1.size() > 10)
         for (size_t idx = 0; idx < grid_list_v1.size(); ++idx) {
             int grid1 = grid_list_v1[idx];
@@ -244,7 +226,7 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
             }
             
             const auto& segment1 = segments1[grid1][segment_index];
-            std::vector<int> to_remove;  // 本地收集要移除的候选
+            std::vector<int> to_remove; 
             
             for (auto it = candidates[grid1].begin(); it != candidates[grid1].end(); ++it) {
                 int grid2 = *it;
@@ -268,7 +250,6 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
                 }
             }
             
-            // 移除超过阈值的候选
             if (!to_remove.empty()) {
                 #pragma omp critical
                 for (int grid2 : to_remove) {
@@ -278,7 +259,6 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
         }
         
         if (first_segment) {
-            // 设置阈值
             std::vector<float> sorted_thresholds(threshold_check_set.begin(), threshold_check_set.end());
             if (!sorted_thresholds.empty()) {
                 int threshold_index = sorted_thresholds.size() / mismatch_distance_factor;
@@ -288,7 +268,6 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
         }
     }
     
-    // 构建最终匹配结果 - 并行化优化
     std::vector<MatchTriplet> matching_result;
     std::vector<std::vector<MatchTriplet>> thread_results;
     
@@ -301,7 +280,6 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
             int grid1 = grid_list_v1[idx];
             
             for (int grid2 : candidates[grid1]) {
-                // 计算整个序列的距离
                 std::vector<bool> seq1(seq_len1), seq2(seq_len2);
                 for (int j = 0; j < seq_len1; ++j) {
                     seq1[j] = motion_status_matrix1.at<uchar>(grid1, j) > 0;
@@ -319,12 +297,10 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
         thread_results.push_back(std::move(local_result));
     }
     
-    // 合并线程结果
     for (const auto& thread_result : thread_results) {
         matching_result.insert(matching_result.end(), thread_result.begin(), thread_result.end());
     }
     
-    // 按距离排序
     std::sort(matching_result.begin(), matching_result.end(), 
               [](const MatchTriplet& a, const MatchTriplet& b) {
                   return a.distance < b.distance;
@@ -333,7 +309,6 @@ std::vector<MatchTriplet> SegmentMatcher::findMatchingGridWithSegment(
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     
-    // 记录匹配耗时到CSV
     if (!parameters.csv_log_file_path.empty()) {
         std::ofstream csv_file(parameters.csv_log_file_path, std::ios::app);
         if (csv_file.is_open()) {
@@ -354,237 +329,232 @@ std::vector<MatchTriplet> SegmentMatcher::propagateMatchingResult(
     int num_rows1, int num_cols1, int num_rows2, int num_cols2,
     const Parameters& parameters, bool shifting_flag) {
     
-    // 对应Python的propagate_matching_result函数 - 优化版本
-    (void)shifting_flag; // 抑制未使用参数警告
+    (void)shifting_flag;
     
     if (match_result.empty()) {
         return match_result;
     }
     
-    std::string distance_metric = parameters.distance_metric;
-    int propagate_step = parameters.propagate_step;
+    // 辅助数据结构
+    struct PropagationContext {
+        const std::string& distance_metric;
+        int propagate_step;
+        int num_rows1, num_cols1, num_rows2, num_cols2;
+        const cv::Mat& motion_status_per_grid1;
+        const cv::Mat& motion_status_per_grid2;
+        std::vector<int> motion_counts1, motion_counts2;
+        std::unordered_set<int> grid_bit_map;
+        
+        PropagationContext(const Parameters& params, int nr1, int nc1, int nr2, int nc2,
+                          const cv::Mat& ms1, const cv::Mat& ms2) 
+            : distance_metric(params.distance_metric), propagate_step(params.propagate_step),
+              num_rows1(nr1), num_cols1(nc1), num_rows2(nr2), num_cols2(nc2),
+              motion_status_per_grid1(ms1), motion_status_per_grid2(ms2) {
+            
+            // 初始化网格位图
+            for (int i = 0; i < motion_status_per_grid1.rows; ++i) {
+                grid_bit_map.insert(i);
+            }
+            
+            // 预计算运动计数
+            motion_counts1.resize(motion_status_per_grid1.rows);
+            motion_counts2.resize(motion_status_per_grid2.rows);
+            
+            #pragma omp parallel for schedule(static) if(motion_status_per_grid1.rows > 100)
+            for (int i = 0; i < motion_status_per_grid1.rows; ++i) {
+                int motion_count = 0;
+                for (int col = 0; col < motion_status_per_grid1.cols; ++col) {
+                    if (motion_status_per_grid1.at<uchar>(i, col) > 0) {
+                        motion_count++;
+                    }
+                }
+                motion_counts1[i] = motion_count;
+            }
+            
+            #pragma omp parallel for schedule(static) if(motion_status_per_grid2.rows > 100)
+            for (int i = 0; i < motion_status_per_grid2.rows; ++i) {
+                int motion_count = 0;
+                for (int col = 0; col < motion_status_per_grid2.cols; ++col) {
+                    if (motion_status_per_grid2.at<uchar>(i, col) > 0) {
+                        motion_count++;
+                    }
+                }
+                motion_counts2[i] = motion_count;
+            }
+        }
+        
+        // 生成网格序列
+        std::vector<bool> getGridSequence(const cv::Mat& motion_status, int grid_index) const {
+            std::vector<bool> sequence;
+            sequence.reserve(motion_status.cols);
+            for (int col = 0; col < motion_status.cols; ++col) {
+                sequence.push_back(motion_status.at<uchar>(grid_index, col) > 0);
+            }
+            return sequence;
+        }
+        
+        // 坐标转换
+        std::pair<int, int> indexToCoord(int index, int num_cols) const {
+            return {index / num_cols, index % num_cols};
+        }
+        
+        int coordToIndex(int x, int y, int num_cols) const {
+            return x * num_cols + y;
+        }
+        
+        bool isValidCoord(int x, int y, int num_rows, int num_cols) const {
+            return x >= 0 && x < num_rows && y >= 0 && y < num_cols;
+        }
+    };
     
-    // 使用unordered_set提高查找效率 - 新增优化
-    std::unordered_set<int> grid_bit_map;
-    for (int i = 0; i < motion_status_per_grid1.rows; ++i) {
-        grid_bit_map.insert(i);
-    }
+    PropagationContext ctx(parameters, num_rows1, num_cols1, num_rows2, num_cols2,
+                          motion_status_per_grid1, motion_status_per_grid2);
     
     std::vector<MatchTriplet> match_result_propagated = match_result;
     
-    // 预计算运动计数以避免重复计算 - 新增优化
-    std::vector<int> motion_counts1(motion_status_per_grid1.rows);
-    std::vector<int> motion_counts2(motion_status_per_grid2.rows);
-    
-    #pragma omp parallel for schedule(static) if(motion_status_per_grid1.rows > 100)
-    for (int i = 0; i < motion_status_per_grid1.rows; ++i) {
-        int motion_count = 0;
-        for (int col = 0; col < motion_status_per_grid1.cols; ++col) {
-            if (motion_status_per_grid1.at<uchar>(i, col) > 0) {
-                motion_count++;
+    // 处理单个传播候选的函数
+    auto processPropagationCandidate = [&](const MatchTriplet& match, 
+                                          std::vector<MatchTriplet>& local_additions) {
+        auto [x1, y1] = ctx.indexToCoord(match.grid1, ctx.num_cols1);
+        auto [x2, y2] = ctx.indexToCoord(match.grid2, ctx.num_cols2);
+        
+        // 生成邻域偏移量
+        std::vector<std::pair<int, int>> offsets;
+        for (int i = -ctx.propagate_step; i <= ctx.propagate_step; ++i) {
+            for (int j = -ctx.propagate_step; j <= ctx.propagate_step; ++j) {
+                offsets.emplace_back(i, j);
             }
         }
-        motion_counts1[i] = motion_count;
-    }
-    
-    #pragma omp parallel for schedule(static) if(motion_status_per_grid2.rows > 100)
-    for (int i = 0; i < motion_status_per_grid2.rows; ++i) {
-        int motion_count = 0;
-        for (int col = 0; col < motion_status_per_grid2.cols; ++col) {
-            if (motion_status_per_grid2.at<uchar>(i, col) > 0) {
-                motion_count++;
+        
+        for (const auto& [dx, dy] : offsets) {
+            int new_x1 = x1 + dx, new_y1 = y1 + dy;
+            if (!ctx.isValidCoord(new_x1, new_y1, ctx.num_rows1, ctx.num_cols1)) continue;
+            
+            int new_index1 = ctx.coordToIndex(new_x1, new_y1, ctx.num_cols1);
+            
+            bool should_process = false;
+            #pragma omp critical(grid_check)
+            {
+                if (ctx.grid_bit_map.find(new_index1) != ctx.grid_bit_map.end()) {
+                    ctx.grid_bit_map.erase(new_index1);
+                    should_process = true;
+                }
+            }
+            
+            if (!should_process || ctx.motion_counts1[new_index1] == 0) continue;
+            
+            // 查找最佳匹配
+            float min_dist = static_cast<float>(ctx.motion_status_per_grid1.cols);
+            float max_dist = 0.0f;
+            std::vector<int> better_match;
+            
+            int search_x2 = x2 + dx, search_y2 = y2 + dy;
+            if (ctx.isValidCoord(search_x2, search_y2, ctx.num_rows2, ctx.num_cols2)) {
+                auto seq1 = ctx.getGridSequence(ctx.motion_status_per_grid1, new_index1);
+                
+                for (const auto& [dx2, dy2] : offsets) {
+                    int final_x2 = search_x2 + dx2, final_y2 = search_y2 + dy2;
+                    if (!ctx.isValidCoord(final_x2, final_y2, ctx.num_rows2, ctx.num_cols2)) continue;
+                    
+                    int new_index2 = ctx.coordToIndex(final_x2, final_y2, ctx.num_cols2);
+                    if (ctx.motion_counts2[new_index2] == 0) continue;
+                    
+                    auto seq2 = ctx.getGridSequence(ctx.motion_status_per_grid2, new_index2);
+                    float dist = DistanceCalculator::segmentSimilarity(seq1, seq2, ctx.distance_metric);
+                    
+                    if (std::abs(dist - min_dist) < 1e-6) {
+                        better_match.push_back(new_index2);
+                    } else if (dist < min_dist) {
+                        min_dist = dist;
+                        better_match.clear();
+                        better_match.push_back(new_index2);
+                    }
+                    
+                    if (dist > max_dist) {
+                        max_dist = dist;
+                    }
+                }
+                
+                // 判断是否添加新匹配
+                std::vector<int> ori_match_grid_list;
+                for (const auto& triplet : match_result_propagated) {
+                    if (triplet.grid1 == new_index1) {
+                        ori_match_grid_list.push_back(triplet.grid2);
+                    }
+                }
+                
+                if (!ori_match_grid_list.empty()) {
+                    std::vector<int> common_elements;
+                    for (int match_idx : better_match) {
+                        if (std::find(ori_match_grid_list.begin(), ori_match_grid_list.end(), match_idx) 
+                            != ori_match_grid_list.end()) {
+                            common_elements.push_back(match_idx);
+                        }
+                    }
+                    
+                    if (!common_elements.empty()) {
+                        for (int match_idx : better_match) {
+                            if (std::find(common_elements.begin(), common_elements.end(), match_idx) 
+                                == common_elements.end()) {
+                                local_additions.emplace_back(new_index1, match_idx, min_dist);
+                            }
+                        }
+                    } else {
+                        auto seq1_ori = ctx.getGridSequence(ctx.motion_status_per_grid1, new_index1);
+                        auto seq2_ori = ctx.getGridSequence(ctx.motion_status_per_grid2, ori_match_grid_list[0]);
+                        
+                        float ori_match_grid_point = DistanceCalculator::segmentSimilarity(
+                            seq1_ori, seq2_ori, ctx.distance_metric);
+                        
+                        float ratio = 0.6f;
+                        if (min_dist < ratio * ori_match_grid_point + (1.0f - ratio) * max_dist) {
+                            for (int match_idx : better_match) {
+                                local_additions.emplace_back(new_index1, match_idx, min_dist);
+                            }
+                        }
+                    }
+                } else {
+                    auto seq1_ref = ctx.getGridSequence(ctx.motion_status_per_grid1, match.grid1);
+                    auto seq2_ref = ctx.getGridSequence(ctx.motion_status_per_grid2, match.grid2);
+                    
+                    float ori_match_grid_point = DistanceCalculator::segmentSimilarity(
+                        seq1_ref, seq2_ref, ctx.distance_metric);
+                    
+                    float ratio = 0.6f;
+                    if (min_dist < ratio * ori_match_grid_point + (1.0f - ratio) * max_dist) {
+                        for (int match_idx : better_match) {
+                            local_additions.emplace_back(new_index1, match_idx, min_dist);
+                        }
+                    }
+                }
             }
         }
-        motion_counts2[i] = motion_count;
-    }
+    };
     
-    // 并行化处理匹配结果 - 新增优化
-    std::vector<std::mutex> grid_mutexes(motion_status_per_grid1.rows);  // 每个网格一个互斥锁
+    // 并行处理传播
     std::vector<std::vector<MatchTriplet>> thread_additions;
     
     #pragma omp parallel
     {
         std::vector<MatchTriplet> local_additions;
-        std::unordered_set<int> local_processed;  // 线程本地的已处理网格
         
         #pragma omp for schedule(dynamic)
         for (size_t match_idx = 0; match_idx < match_result.size(); ++match_idx) {
-            const auto& match = match_result[match_idx];
-            int index1 = match.grid1;
-            int index2 = match.grid2;
-            
-            int x1 = index1 / num_cols1;
-            int y1 = index1 % num_cols1;
-            int x2 = index2 / num_cols2;
-            int y2 = index2 % num_cols2;
-            
-            for (int i = -propagate_step; i <= propagate_step; ++i) {
-                for (int j = -propagate_step; j <= propagate_step; ++j) {
-                    int new_x1 = x1 + i;
-                    int new_y1 = y1 + j;
-                    
-                    if (new_x1 >= 0 && new_x1 < num_rows1 && new_y1 >= 0 && new_y1 < num_cols1) {
-                        int new_index1 = new_x1 * num_cols1 + new_y1;
-                        
-                        // 检查是否已经被处理过
-                        bool should_process = false;
-                        #pragma omp critical(grid_check)
-                        {
-                            if (grid_bit_map.find(new_index1) != grid_bit_map.end()) {
-                                grid_bit_map.erase(new_index1);
-                                should_process = true;
-                            }
-                        }
-                        
-                        if (!should_process || motion_counts1[new_index1] == 0) {
-                            continue;
-                        }
-                        
-                        float min_dist = static_cast<float>(motion_status_per_grid1.cols);
-                        float max_dist = 0.0f;
-                        std::vector<int> better_match;
-                        
-                        int new_x2 = x2 + i;
-                        int new_y2 = y2 + j;
-                        
-                        if (new_x2 >= 0 && new_x2 < num_rows2 && new_y2 >= 0 && new_y2 < num_cols2) {
-                            for (int k = -propagate_step; k <= propagate_step; ++k) {
-                                for (int l = -propagate_step; l <= propagate_step; ++l) {
-                                    int final_x2 = new_x2 + k;
-                                    int final_y2 = new_y2 + l;
-                                    
-                                    if (final_x2 >= 0 && final_x2 < num_rows2 && 
-                                        final_y2 >= 0 && final_y2 < num_cols2) {
-                                        
-                                        int new_index2 = final_x2 * num_cols2 + final_y2;
-                                        
-                                        if (motion_counts2[new_index2] == 0) {
-                                            continue;
-                                        }
-                                        
-                                        // 预分配序列以减少内存分配 - 新增优化
-                                        std::vector<bool> seq1, seq2;
-                                        seq1.reserve(motion_status_per_grid1.cols);
-                                        seq2.reserve(motion_status_per_grid2.cols);
-                                        
-                                        for (int col = 0; col < motion_status_per_grid1.cols; ++col) {
-                                            seq1.push_back(motion_status_per_grid1.at<uchar>(new_index1, col) > 0);
-                                        }
-                                        for (int col = 0; col < motion_status_per_grid2.cols; ++col) {
-                                            seq2.push_back(motion_status_per_grid2.at<uchar>(new_index2, col) > 0);
-                                        }
-                                        
-                                        float dist = DistanceCalculator::segmentSimilarity(seq1, seq2, distance_metric);
-                                        
-                                        if (std::abs(dist - min_dist) < 1e-6) {
-                                            better_match.push_back(new_index2);
-                                        } else if (dist < min_dist) {
-                                            min_dist = dist;
-                                            better_match.clear();
-                                            better_match.push_back(new_index2);
-                                        }
-                                        
-                                        if (dist > max_dist) {
-                                            max_dist = dist;
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // 检查是否存在原有匹配 - 优化版本
-                            std::vector<int> ori_match_grid_list;
-                            for (const auto& triplet : match_result_propagated) {
-                                if (triplet.grid1 == new_index1) {
-                                    ori_match_grid_list.push_back(triplet.grid2);
-                                }
-                            }
-                            
-                            if (!ori_match_grid_list.empty()) {
-                                // 检查重叠
-                                std::vector<int> common_elements;
-                                for (int match_idx : better_match) {
-                                    if (std::find(ori_match_grid_list.begin(), ori_match_grid_list.end(), match_idx) 
-                                        != ori_match_grid_list.end()) {
-                                        common_elements.push_back(match_idx);
-                                    }
-                                }
-                                
-                                if (!common_elements.empty()) {
-                                    // 有重叠，添加新的匹配
-                                    for (int match_idx : better_match) {
-                                        if (std::find(common_elements.begin(), common_elements.end(), match_idx) 
-                                            == common_elements.end()) {
-                                            local_additions.emplace_back(new_index1, match_idx, min_dist);
-                                        }
-                                    }
-                                } else {
-                                    // 没有重叠，比较质量
-                                    std::vector<bool> seq1_ori, seq2_ori;
-                                    seq1_ori.reserve(motion_status_per_grid1.cols);
-                                    seq2_ori.reserve(motion_status_per_grid2.cols);
-                                    
-                                    for (int col = 0; col < motion_status_per_grid1.cols; ++col) {
-                                        seq1_ori.push_back(motion_status_per_grid1.at<uchar>(new_index1, col) > 0);
-                                    }
-                                    for (int col = 0; col < motion_status_per_grid2.cols; ++col) {
-                                        seq2_ori.push_back(motion_status_per_grid2.at<uchar>(ori_match_grid_list[0], col) > 0);
-                                    }
-                                    
-                                    float ori_match_grid_point = DistanceCalculator::segmentSimilarity(
-                                        seq1_ori, seq2_ori, distance_metric);
-                                    
-                                    float ratio = 0.6f;
-                                    if (min_dist < ratio * ori_match_grid_point + (1.0f - ratio) * max_dist) {
-                                        // 标记需要更新匹配结果（在critical section中处理）
-                                        for (int match_idx : better_match) {
-                                            local_additions.emplace_back(new_index1, match_idx, min_dist);
-                                        }
-                                    }
-                                }
-                            } else {
-                                // 原本没有匹配结果，比较后决定是否添加
-                                std::vector<bool> seq1_ref, seq2_ref;
-                                seq1_ref.reserve(motion_status_per_grid1.cols);
-                                seq2_ref.reserve(motion_status_per_grid2.cols);
-                                
-                                for (int col = 0; col < motion_status_per_grid1.cols; ++col) {
-                                    seq1_ref.push_back(motion_status_per_grid1.at<uchar>(index1, col) > 0);
-                                }
-                                for (int col = 0; col < motion_status_per_grid2.cols; ++col) {
-                                    seq2_ref.push_back(motion_status_per_grid2.at<uchar>(index2, col) > 0);
-                                }
-                                
-                                float ori_match_grid_point = DistanceCalculator::segmentSimilarity(
-                                    seq1_ref, seq2_ref, distance_metric);
-                                
-                                float ratio = 0.6f;
-                                if (min_dist < ratio * ori_match_grid_point + (1.0f - ratio) * max_dist) {
-                                    for (int match_idx : better_match) {
-                                        local_additions.emplace_back(new_index1, match_idx, min_dist);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            processPropagationCandidate(match_result[match_idx], local_additions);
         }
         
         #pragma omp critical
         thread_additions.push_back(std::move(local_additions));
     }
     
-    // 合并所有线程的添加结果
     for (const auto& additions : thread_additions) {
         for (const auto& triplet : additions) {
-            // 移除现有的匹配（如果有）
             auto it = std::remove_if(match_result_propagated.begin(), match_result_propagated.end(),
                 [triplet](const MatchTriplet& existing) {
                     return existing.grid1 == triplet.grid1;
                 });
             match_result_propagated.erase(it, match_result_propagated.end());
             
-            // 添加新的匹配
             match_result_propagated.push_back(triplet);
         }
     }

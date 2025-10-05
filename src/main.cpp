@@ -42,6 +42,7 @@ void printUsage(const char* program_name) {
               << "  --ransac-max-iterations <count> RANSAC最大迭代次数 (默认: 1000)\n"
               << "  --ransac-min-inlier-ratio <val> RANSAC最小内点比例 (默认: 0.5)\n"
               << "  --csv-log <path>            CSV日志文件路径\n"
+              << "  --mismatch_distance_factor <factor> 不匹配距离因子 (默认: 9)\n"
               << "  -h, --help                  显示此帮助信息\n";
 }
 
@@ -103,6 +104,10 @@ Parameters parseArguments(int argc, char* argv[]) {
             params.ransac_min_inlier_ratio = std::stof(argv[++i]);
         } else if (arg == "--csv-log" && i + 1 < argc) {
             params.csv_log_file_path = argv[++i];
+        } else if (arg == "--mismatch_distance_factor" && i + 1 < argc) {
+            params.mismatch_distance_factor = std::stoi(argv[++i]);
+        } else if (arg == "--propagate_time" && i + 1 < argc) {
+            params.propagate_time = std::stoi(argv[++i]);
         }
     }
     
@@ -134,7 +139,10 @@ int main(int argc, char* argv[]) {
                   << "  使用Otsu T1阈值: " << (params.use_otsu_t1 ? "是" : "否") << "\n"
                   << "  使用Otsu T2阈值: " << (params.use_otsu_t2 ? "是" : "否") << "\n"
                   << "  全局Otsu模式: " << (params.is_global_otsu ? "是" : "否") << "\n"
-                  << "  启用时间对齐: " << (params.enable_time_alignment ? "是" : "否") << "\n";
+                  << "  启用时间对齐: " << (params.enable_time_alignment ? "是" : "否") << "\n"
+                  << "  不匹配距离因子: " << params.mismatch_distance_factor << "\n"
+                  << "  传播次数: " << params.propagate_time << "\n";
+
         
         if (params.enable_time_alignment) {
             std::cout << "  最大时间偏移: " << params.max_time_offset << " 帧\n"
@@ -153,15 +161,15 @@ int main(int argc, char* argv[]) {
         
         // 执行主要处理流程 - 对应Python的cal_overlap_grid函数
         std::cout << "开始执行视频匹配流程...\n";
-        auto start_time = std::chrono::high_resolution_clock::now();
+        // auto start_time = std::chrono::high_resolution_clock::now();
         
         auto all_match_results = matcher.calOverlapGrid();
         
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        // auto end_time = std::chrono::high_resolution_clock::now();
+        // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         
         std::cout << "\n匹配流程完成!\n";
-        std::cout << "总处理时间: " << duration.count() << " 毫秒\n";
+        // std::cout << "总处理时间: " << duration.count() << " 毫秒\n";
         
         // 打印结果统计
         std::cout << "\n匹配结果统计:\n";
