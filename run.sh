@@ -3,10 +3,6 @@ taskset -c 0-31 ./build/FlowIntelligence \
   --output-path ./outputTest \
   --max-frames 3000 \
   --csv-log ./outputTest/log.csv \
-  --dataset-path /home/jackew/Project/FlowIntelligence/Datasets \
+  --dataset-path ./FlowIntelligence/Datasets \
   --video1 T10L.mp4 --video2 T10R.mp4 \ 
-  #   --use-otsu-t1 --use-otsu-t2 --global-otsu \
-
-  # --dataset_path /mnt/mDisk2/CityData/au_video/video \
-  # --video1 63554_PAINT_R.mp4 --video2 63554_PAINT.mp4 \
   
